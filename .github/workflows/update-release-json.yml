@@ -1,0 +1,86 @@
+name: Update Release JSON
+
+on:
+  release:
+    types: [published]  # 当新的Release被发布时触发
+
+jobs:
+  update-json:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # 需要写入权限来更新文件
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: main  # 确保检出main分支
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      
+      - name: Get release details
+        id: release
+        run: |
+          echo "tag_name=${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
+          echo "release_url=${{ github.event.release.html_url }}" >> $GITHUB_OUTPUT
+          
+          # 获取发布日期
+          RELEASE_DATE=$(date +"%Y-%m-%d")
+          echo "release_date=$RELEASE_DATE" >> $GITHUB_OUTPUT
+          
+          # 提取版本号（移除'v'前缀）
+          VERSION=$(echo "${{ github.event.release.tag_name }}" | sed 's/^v//')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+      
+      - name: Get APK download URL
+        id: apk_url
+        run: |
+          # 使用GitHub API获取最新发布的资源列表
+          assets_url="${{ github.event.release.assets_url }}"
+          assets_json=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" "$assets_url")
+          
+          # 提取APK下载链接 (取第一个APK文件)
+          APK_URL=$(echo "$assets_json" | jq -r '.[] | select(.name | endswith(".apk")) | .browser_download_url' | head -n 1)
+          
+          # 如果找不到APK，使用默认链接
+          if [ -z "$APK_URL" ]; then
+            APK_URL="${{ github.event.release.html_url }}"
+          fi
+          
+          echo "apk_url=$APK_URL" >> $GITHUB_OUTPUT
+      
+      - name: Update tv-stable.json
+        run: |
+          # 创建新的tv-stable.json文件，适配现有项目的更新逻辑
+          cat << EOF > tv-stable.json
+          {
+            "version": "${{ steps.release.outputs.version }}",
+            "downloadUrl": "${{ steps.apk_url.outputs.apk_url }}",
+            "description": "${{ github.event.release.body }}"
+          }
+          EOF
+          
+          # 显示更新后的内容
+          echo "更新后的tv-stable.json内容:"
+          cat tv-stable.json
+      
+      - name: Commit and push changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          
+          git add tv-stable.json
+          
+          # 检查是否有变化
+          if git diff --staged --quiet; then
+            echo "没有需要提交的变更"
+            exit 0
+          fi
+          
+          git commit -m "Update tv-stable.json for ${{ steps.release.outputs.tag_name }}"
+          git push origin main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 

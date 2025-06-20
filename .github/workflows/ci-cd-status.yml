@@ -13,7 +13,8 @@ jobs:
       contents: write
     
     steps:
-    - uses: actions/checkout@v3
+    - name: Checkout code
+      uses: actions/checkout@v4
     
     - name: Update README with build status
       run: |

@@ -164,7 +164,6 @@ activation_codes_*.txt
 
 # 测试JSON文件
 tv-beta.json
-tv-stable.json
 
 # 其他项目特定文件
 exclude.txt
