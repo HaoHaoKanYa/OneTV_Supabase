@@ -83,14 +83,17 @@ USER_RULES.md
 # 不要排除整个supabase目录，只排除敏感或临时文件
 
 # 敏感信息和配置文件
-*.properties
+# 明确列出要排除的properties文件，而不是使用通配符
 local.properties
 keystore.properties
+supabase_config.properties
+secrets.properties
+application.properties
+# 保留重要配置文件
+# gradle.properties和gradle-wrapper.properties不在排除列表中
+!supabase/config.toml  # 保留Supabase配置文件
 *.keystore
 *.jks
-!gradle.properties  # 保留Gradle全局配置
-!gradle/wrapper/gradle-wrapper.properties  # 保留Gradle Wrapper配置文件
-!supabase/config.toml  # 保留Supabase配置文件
 
 # 环境变量文件
 .env
