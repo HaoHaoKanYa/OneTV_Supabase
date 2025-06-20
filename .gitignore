@@ -89,6 +89,7 @@ gradle.properties
 keystore.properties
 *.keystore
 *.jks
+!gradle/wrapper/gradle-wrapper.properties  # 保留Gradle Wrapper配置文件
 !supabase/config.toml  # 保留Supabase配置文件
 
 # 环境变量文件
