@@ -8,11 +8,11 @@ OneTV是一款基于Android TV的全新流媒体应用，使用Su云作为后端
 
 ## 构建状态
 
-| 工作流 | 状态 |
-|-------|------|
-| Android CI | ![Android CI](https://github.com/HaoHaoKanYa/OneTV_Supabase/actions/workflows/android.yml/badge.svg) |
-| Release | ![Release](https://github.com/HaoHaoKanYa/OneTV_Supabase/actions/workflows/release.yaml/badge.svg) |
-| Supabase Deploy | ![Supabase Deploy](https://github.com/HaoHaoKanYa/OneTV_Supabase/actions/workflows/supabase-deploy.yml/badge.svg) |
+| 工作流          | 状态                                                                                                                  |
+| --------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Android CI      | ![Android CI](https://github.com/HaoHaoKanYa/OneTV_Supabase/actions/workflows/android.yml/badge.svg)                    |
+| Release         | ![Release](https://github.com/HaoHaoKanYa/OneTV_Supabase/actions/workflows/release.yaml/badge.svg)                      |
+| Supabase Deploy | ![Supabase Deploy](https://github.com/HaoHaoKanYa/OneTV_Supabase/actions/workflows/supabase-deploy.yml/badge.svg)       |
 | Supabase Config | ![Supabase Config](https://github.com/HaoHaoKanYa/OneTV_Supabase/actions/workflows/check-supabase-config.yml/badge.svg) |
 
 ## 🌟 主要特性
@@ -90,101 +90,6 @@ OneTV是一款基于Android TV的全新流媒体应用，使用Su云作为后端
 ## 📝 免责声明
 
 OneTV仅为空壳软件，不提供任何直播源。用户需自行添加自定义直播源，并对使用内容负责。应用仅供个人学习和测试使用，请在24小时内删除。
-
-# 随机激活码生成器
-
-这是一个简单的Python脚本，用于生成指定数量和长度的随机激活码，并支持设置激活码有效期。
-
-## 功能特点
-
-- 生成随机32位（可自定义长度）激活码
-- 支持批量生成多个激活码
-- 可设置激活码有效期（如10天、30天、365天等）
-- 可设置激活码具体过期日期（如2025-12-31）
-- 自动将生成的激活码保存到文本文件
-- 支持简单格式（仅激活码）或CSV格式（激活码,天数,过期日期）输出
-- 可以自定义输出文件名
-- 命令行界面，便于使用
-
-## 使用方法
-
-基本用法：
-
-```bash
-python py/generate_activation_codes.py
-```
-
-这将生成10个默认长度为32位的激活码，有效期30天，并保存到带时间戳的文本文件中。
-
-### 可选参数
-
-- `-n, --number`：指定要生成的激活码数量（默认：10）
-- `-l, --length`：指定激活码长度（默认：32）
-- `-d, --days`：指定激活码有效期天数（默认：30）
-- `-e, --expiry-date`：指定激活码具体过期日期，格式为YYYY-MM-DD（例如：2025-12-31）
-- `-o, --output`：指定输出文件名（默认：activation_codes_YYYYMMDD_HHMMSS.txt）
-- `--format`：指定输出格式，可选 simple（仅激活码）或 csv（激活码,天数,过期日期）（默认：csv）
-
-**注意**：`-d`和`-e`参数是互斥的，不能同时使用。
-
-### 示例
-
-生成100个激活码：
-```bash
-python py/generate_activation_codes.py -n 100
-```
-
-生成16位长的激活码：
-```bash
-python py/generate_activation_codes.py -l 16
-```
-
-生成365天有效期的激活码：
-```bash
-python py/generate_activation_codes.py -d 365
-```
-
-生成过期日期为2025-12-31的激活码：
-```bash
-python py/generate_activation_codes.py -e 2025-12-31
-```
-
-指定输出文件名：
-```bash
-python py/generate_activation_codes.py -o my_activation_codes.txt
-```
-
-生成仅包含激活码的简单格式输出：
-```bash
-python py/generate_activation_codes.py --format simple
-```
-
-组合使用多个参数：
-```bash
-python py/generate_activation_codes.py -n 50 -l 24 -d 180 -o half_year_codes.txt
-```
-
-生成圣诞节到期的激活码：
-```bash
-python py/generate_activation_codes.py -n 50 -l 32 -e 2025-12-25 -o christmas_codes.txt
-```
-
-## 输出格式
-
-默认情况下，生成的文件采用CSV格式，每行的格式为：
-```
-激活码,有效天数,过期日期
-```
-
-例如：
-```
-a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6,30,2023-05-01
-```
-
-如果指定了`--format simple`参数，则每行只包含激活码：
-```
-a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6
-```
 
 ## 系统要求
 

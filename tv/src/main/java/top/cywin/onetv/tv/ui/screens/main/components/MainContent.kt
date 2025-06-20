@@ -50,7 +50,8 @@ import top.cywin.onetv.tv.ui.utils.handleKeyEvents
 // 新增导入
 import android.content.Context
 import androidx.compose.ui.platform.LocalContext
-
+import top.cywin.onetv.tv.ui.screens.main.MainViewModel
+import top.cywin.onetv.tv.ui.screens.settings.SettingsCategories
 
 
 @Composable
@@ -61,6 +62,7 @@ fun MainContent(
     filteredChannelGroupListProvider: () -> ChannelGroupList = { ChannelGroupList() },
     epgListProvider: () -> EpgList = { EpgList() },
     settingsViewModel: SettingsViewModel = viewModel(),
+    mainViewModel: MainViewModel = viewModel(),
 ) {
     val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -344,14 +346,11 @@ fun MainContent(
                 mainContentState.isQuickOpScreenVisible = false
                 mainContentState.isSettingsScreenVisible = true
             },
-// 修改 onClearCache 部分：
-
             onClearCache = {
                 settingsViewModel.iptvPlayableHostList = emptySet()
                 coroutineScope.launch {
-
                     val source = settingsViewModel.iptvSourceCurrent
-                    getIptvRepository(context, source).clearCache()  // ✅ 传递正确的参数
+                    getIptvRepository(context, source).clearCache()
                     EpgRepository(settingsViewModel.epgSourceCurrent).clearCache()
                     Snackbar.show("缓存已清除，请重启应用")
                 }
@@ -393,14 +392,15 @@ fun MainContent(
         onDismissRequest = { mainContentState.isChannelScreenVisible = false },
     ) {
         ClassicChannelScreen(
-
-            // 新增回调参数
             onShowMoreSettings = {
                 mainContentState.isChannelScreenVisible = false
                 mainContentState.isSettingsScreenVisible = true
             },
-            // 其他原有参数保持不变...
-
+            onNavigateToSettingsCategory = { category ->
+                mainContentState.isChannelScreenVisible = false
+                mainContentState.isSettingsScreenVisible = true
+                mainViewModel.setCurrentSettingsCategory(category)
+            },
             channelGroupListProvider = filteredChannelGroupListProvider,
             currentChannelProvider = { mainContentState.currentChannel },
             currentChannelUrlIdxProvider = { mainContentState.currentChannelUrlIdx },
@@ -446,6 +446,7 @@ fun MainContent(
         SettingsScreen(
             channelGroupListProvider = channelGroupListProvider,
             onClose = { mainContentState.isSettingsScreenVisible = false },
+            initialCategory = mainViewModel.currentSettingsCategory.value ?: SettingsCategories.USER
         )
     }
 

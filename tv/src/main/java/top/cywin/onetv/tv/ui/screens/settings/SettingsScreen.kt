@@ -58,15 +58,16 @@ fun SettingsScreen(
     channelGroupListProvider: () -> ChannelGroupList = { ChannelGroupList() },
     onClose: () -> Unit = {},
     settingsViewModel: SettingsViewModel = viewModel(),
-    onNavigateToLogin: () -> Unit = {}
+    onNavigateToLogin: () -> Unit = {},
+    initialCategory: SettingsCategories = SettingsCategories.USER
 ) {
     val childPadding = rememberChildPadding()
-    // 记住当前选中的类别
-    var currentCategory by remember { mutableStateOf(SettingsCategories.USER) } // 默认显示账户信息
+    // 记住当前选中的类别，初始值使用传入的initialCategory
+    var currentCategory by remember { mutableStateOf(initialCategory) } 
     // 记住当前悬停的类别（光标移动到的类别）
-    var hoverCategory by remember { mutableStateOf(SettingsCategories.USER) }
+    var hoverCategory by remember { mutableStateOf(initialCategory) }
     // 记住是否已确认选择类别
-    var isConfirmed by remember { mutableStateOf(false) }
+    var isConfirmed by remember { mutableStateOf(true) } // 由于有初始值，设为true
     val context = LocalContext.current
 
     // 创建无限动画过渡

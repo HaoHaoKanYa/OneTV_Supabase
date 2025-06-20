@@ -7,6 +7,7 @@ import androidx.compose.animation.core.animateIntAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -21,11 +22,13 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -45,11 +48,15 @@ import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
@@ -86,14 +93,27 @@ import top.cywin.onetv.tv.ui.screens.guide.components.GuideTvRemoteKeys
 import top.cywin.onetv.tv.ui.tooling.PreviewWithLayoutGrids
 import top.cywin.onetv.tv.ui.utils.handleKeyEvents
 import top.cywin.onetv.tv.R // 确保R文件路径正确
+import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material3.Icon
+import top.cywin.onetv.core.data.repositories.supabase.SupabaseSessionManager
+import top.cywin.onetv.tv.ui.screens.settings.SettingsCategories
+import androidx.compose.ui.platform.LocalContext
+
 /**
- * 新增个人中心按钮组件，采用动态流光背景和圆角效果，并加载指定图片 photo_logo.png
+ * 个人中心按钮组件，采用动态流光背景和圆角效果，并根据用户类型显示不同的 VIP 图标
+ * 
+ * @param onClick 点击事件回调
+ * @param modifier Modifier修饰符
+ * @param buttonHeight 按钮高度
+ * @param userType 用户类型：0=游客，1=普通注册会员，2=VIP会员
  */
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun PersonalCenterButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    buttonHeight: Dp = 56.dp
+    buttonHeight: Dp = 56.dp,
+    userType: Int = 0 // 默认为游客
 ) {
     // 无限动画实现流光效果
     val infiniteTransition = rememberInfiniteTransition()
@@ -103,6 +123,16 @@ fun PersonalCenterButton(
         animationSpec = infiniteRepeatable(
             animation = tween(durationMillis = 3000, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
+        )
+    )
+
+    // VIP标签脉动动画
+    val vipPulse by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.05f, // 减小动画幅度，避免文字换行
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1000, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
         )
     )
 
@@ -121,6 +151,20 @@ fun PersonalCenterButton(
         start = Offset(x = animatedOffset, y = 0f),
         end = Offset(x = animatedOffset + 300f, y = 300f)
     )
+    
+    // 根据用户类型决定VIP标签的颜色
+    val vipColor = when (userType) {
+        2 -> Color(0xFFFFD700) // VIP 用户 - 金色
+        1 -> Color(0xFFC0C0C0) // 普通会员 - 银色
+        else -> Color(0xFF9E9E9E) // 游客 - 暗淡色
+    }
+    
+    // 光晕效果颜色和强度根据用户类型变化
+    val glowColor = when (userType) {
+        2 -> Color(0xFFFFD700).copy(alpha = 0.6f) // VIP 用户 - 金色光晕
+        1 -> Color(0xFFC0C0C0).copy(alpha = 0.4f) // 普通会员 - 银色光晕
+        else -> Color(0xFF9E9E9E).copy(alpha = 0.2f) // 游客 - 几乎没有光晕
+    }
 
     Surface(
         onClick = onClick,
@@ -138,19 +182,88 @@ fun PersonalCenterButton(
                 .width(IntrinsicSize.Min),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // 替换图标，加载 photo_logo.png
-            Image(
-                painter = painterResource(id = R.drawable.photo_logo),
-                contentDescription = "个人中心",
-                modifier = Modifier.size(34.dp)
-            )
+            // 使用彩色"VIP"文本替代图标
+            Box(
+                modifier = Modifier.size(32.dp), // 减小VIP图标区域尺寸
+                contentAlignment = Alignment.Center
+            ) {
+                // 底层光晕效果（只对VIP和普通会员显示）
+                if (userType > 0) {
+                    Box(
+                        modifier = Modifier
+                            .size(30.dp)
+                            .background(
+                                brush = Brush.radialGradient(
+                                    colors = listOf(glowColor, Color.Transparent),
+                                    center = Offset.Unspecified,
+                                    radius = 30f
+                                ),
+                                shape = RoundedCornerShape(4.dp)
+                            )
+                    )
+                }
+                
+                // VIP用户文本动画缩放效果
+                val textModifier = if (userType == 2) {
+                    // 计算基于脉动动画的大小变化
+                    val size = (22 * vipPulse).sp
+                    Modifier
+                } else {
+                    Modifier
+                }
+                
+                // 使用固定宽度的容器确保文字不会因脉动导致换行
+                Box(
+                    modifier = Modifier.width(32.dp).height(30.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    // 恢复使用整体VIP文本，取消跳动效果
+                    if (userType > 0) {
+                        // 阴影层
+                        Text(
+                            text = "VIP",
+                            fontSize = 14.sp, // 减小字体大小
+                            fontWeight = FontWeight.Black,
+                            style = TextStyle(
+                                fontFamily = FontFamily.SansSerif,
+                                textAlign = TextAlign.Center
+                            ),
+                            modifier = Modifier.offset(1.dp, 1.dp),
+                            color = Color.Black.copy(alpha = 0.5f)
+                        )
+                    }
+                    
+                    // VIP文本主体
+                    Text(
+                        text = "VIP",
+                        fontSize = 14.sp, // 减小字体大小
+                        fontWeight = FontWeight.Black,
+                        style = TextStyle(
+                            fontFamily = FontFamily.SansSerif,
+                            textAlign = TextAlign.Center
+                        ),
+                        color = vipColor
+                    )
+                }
+                
+                // 如果是VIP用户，添加额外的装饰效果（移除了皇冠图标）
+                if (userType == 2) {
+                    // 闪亮星星效果
+                    Box(modifier = Modifier
+                        .size(6.dp)
+                        .offset(8.dp, (-9).dp)
+                        .background(Color(0xFFFFD700), shape = RoundedCornerShape(6.dp))
+                    )
+                }
+            }
+            
             Spacer(modifier = Modifier.width(8.dp))
             Text(
                 text = "个人中心",
                 style = MaterialTheme.typography.labelLarge.copy(
                     color = Color.White,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp // 直接指定字号
+                    fontSize = 14.sp // 减小字体大小
                 )
             )
         }
@@ -183,11 +296,24 @@ fun ClassicChannelScreen(
     channelFavoriteListVisibleProvider: () -> Boolean = { false },
     onChannelFavoriteListVisibleChange: (Boolean) -> Unit = {},
     onClose: () -> Unit = {},
-    onShowMoreSettings: () -> Unit = {}
+    onShowMoreSettings: () -> Unit = {},
+    onNavigateToSettingsCategory: ((SettingsCategories) -> Unit)? = null
 ) {
     val screenAutoCloseState = rememberScreenAutoCloseState(onTimeout = onClose)
     val channelGroupList = channelGroupListProvider()
     val channelFavoriteListVisible = remember { channelFavoriteListVisibleProvider() }
+    val context = LocalContext.current
+
+    // 获取用户类型
+    val userType = remember {
+        val userData = SupabaseSessionManager.getCachedUserData(context)
+        if (userData != null) {
+            if (userData.is_vip) 2 // VIP用户
+            else 1 // 普通注册会员
+        } else {
+            0 // 游客
+        }
+    }
 
     var focusedChannelGroup by remember {
         mutableStateOf(
@@ -215,10 +341,15 @@ fun ClassicChannelScreen(
             // 左侧区域：包含个人中心按钮与频道组列表
             Column {
                 PersonalCenterButton(
-                    onClick = onShowMoreSettings,
+                    onClick = { 
+                        // 修改为导航到个人中心设置项
+                        onNavigateToSettingsCategory?.invoke(SettingsCategories.PROFILE) 
+                            ?: onShowMoreSettings()
+                    },
                     modifier = if (groupWidth > 0)
                         Modifier.width(with(LocalDensity.current) { groupWidth.toDp() })
-                    else Modifier
+                    else Modifier,
+                    userType = userType // 传递用户类型
                 )
                 ClassicChannelGroupItemList(
                     modifier = Modifier
@@ -393,6 +524,7 @@ fun ClassicChannelScreenPreview() {
                 epgListProvider = { EpgList.example(ChannelGroupList.EXAMPLE.channelList) },
                 showEpgProgrammeProgressProvider = { true },
                 onShowMoreSettings = {},
+                onNavigateToSettingsCategory = {}
             )
         }
     }

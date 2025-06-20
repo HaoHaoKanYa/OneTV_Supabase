@@ -61,7 +61,7 @@ fun SupabaseUserProfileInfo(
         } else if (userData == null) {
             // 无数据状态
             Text(
-                text = "请前往账户中心登录个人账号获取用户资料",
+                text = "点击"前往登录"标签可进入登录界面，登录个人账号后获取用户数据",
                 color = Color.White,
                 fontSize = 18.sp,
                 textAlign = TextAlign.Center,

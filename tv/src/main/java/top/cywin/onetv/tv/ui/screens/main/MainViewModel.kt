@@ -45,6 +45,8 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.launch
+import top.cywin.onetv.tv.ui.screens.settings.SettingsCategories
+import top.cywin.onetv.tv.supabase.SupabaseCacheManager
 
 private fun formatBeijingTime(time: Long): String {
     if (time <= 0) return "未记录"
@@ -59,6 +61,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val appContext = getApplication<Application>().applicationContext
     private var iptvRepo: BaseIptvRepository = GuestIptvRepository(source)
     val uiState: StateFlow<MainUiState> = _uiState.asStateFlow()
+    
+    // 当前选中的设置分类
+    private val _currentSettingsCategory = MutableStateFlow<SettingsCategories?>(null)
+    val currentSettingsCategory: StateFlow<SettingsCategories?> = _currentSettingsCategory.asStateFlow()
+
+    // 设置当前选中的设置分类
+    fun setCurrentSettingsCategory(category: SettingsCategories) {
+        _currentSettingsCategory.value = category
+        Log.d("MainViewModel", "设置当前设置分类: ${category.name}")
+    }
 
     init {
         init()
@@ -103,6 +115,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             Log.d("MainViewModel", "会话已清除")
             SupabaseSessionManager.clearLastLoadedTime(appContext)
             Log.d("MainViewModel", "时间戳已重置")
+            
+            // 清除用户资料和设置缓存
+            SupabaseCacheManager.clearAllCachesOnLogout(appContext)
+            Log.d("MainViewModel", "用户资料和设置缓存已清除")
+            
             clearAllCache(clearUserCache = true)
             iptvRepo = GuestIptvRepository(source)
             Log.d("MainViewModel", "已重置为游客仓库")

@@ -88,33 +88,103 @@ fun SupabaseUserSettings(
     LaunchedEffect(userData) {
         if (userData != null && !isLoading) {
             try {
-                // 在IO线程上加载设置
-                val settings = withContext(Dispatchers.IO) {
-                    loadUserSettings(context)
-                }
+                isSettingsLoading = true
                 
-                // 在主线程中更新UI
-                withContext(Dispatchers.Main) {
-                    // 加载个人资料
+                // 先尝试从缓存加载
+                val cachedSettings = SupabaseUserSettingsSessionManager.getCachedUserSettings(context)
+                
+                // 检查缓存是否有效
+                if (cachedSettings != null && SupabaseUserSettingsSessionManager.isCacheValid(context)) {
+                    // 如果缓存有效，直接使用缓存数据
                     userProfile = UserProfile(
-                        gender = settings.gender,
-                        birthDate = settings.birthDate,
-                        region = settings.region,
-                        languagePreference = settings.languagePreference,
-                        timezone = settings.timezone,
-                        displayName = settings.displayName,
-                        avatarUrl = settings.avatarUrl,
-                        bio = settings.bio
+                        gender = cachedSettings.gender,
+                        birthDate = cachedSettings.birthDate,
+                        region = cachedSettings.region,
+                        languagePreference = cachedSettings.languagePreference,
+                        timezone = cachedSettings.timezone,
+                        displayName = cachedSettings.displayName,
+                        avatarUrl = cachedSettings.avatarUrl,
+                        bio = cachedSettings.bio
                     )
                     
+                    Log.d("UserSettings", "使用缓存的用户设置 | 显示名称: ${cachedSettings.displayName ?: "未设置"} | 缓存有效期: 30天")
                     isSettingsLoading = false
+                } else {
+                    // 缓存无效或不存在，从服务器加载
+                    withContext(Dispatchers.IO) {
+                        try {
+                            val settings = loadUserSettings(context)
+                            
+                            // 在主线程中更新UI
+                            withContext(Dispatchers.Main) {
+                                // 加载个人资料
+                                userProfile = UserProfile(
+                                    gender = settings.gender,
+                                    birthDate = settings.birthDate,
+                                    region = settings.region,
+                                    languagePreference = settings.languagePreference,
+                                    timezone = settings.timezone,
+                                    displayName = settings.displayName,
+                                    avatarUrl = settings.avatarUrl,
+                                    bio = settings.bio
+                                )
+                                
+                                // 保存到缓存
+                                val userSettings = SupabaseUserSettingsSessionManager.UserSettings(
+                                    userId = userData.userid,
+                                    theme = settings.theme,
+                                    playerSettings = JSONObject(settings.playerSettings.toString()),
+                                    notificationEnabled = settings.notificationEnabled,
+                                    gender = settings.gender,
+                                    birthDate = settings.birthDate,
+                                    region = settings.region,
+                                    languagePreference = settings.languagePreference,
+                                    timezone = settings.timezone,
+                                    displayName = settings.displayName,
+                                    avatarUrl = settings.avatarUrl,
+                                    bio = settings.bio
+                                )
+                                
+                                SupabaseUserSettingsSessionManager.saveUserSettings(context, userSettings)
+                                Log.d("UserSettings", "从服务器获取新的用户设置 | 显示名称: ${settings.displayName ?: "未设置"} | 原因: ${
+                                    if (cachedSettings == null) "无缓存" else "缓存已失效"
+                                }")
+                                
+                                isSettingsLoading = false
+                            }
+                        } catch (e: Exception) {
+                            Log.e("UserSettings", "从服务器获取用户设置失败", e)
+                            
+                            // 如果从服务器获取失败但有缓存，仍然使用缓存
+                            if (cachedSettings != null) {
+                                withContext(Dispatchers.Main) {
+                                    userProfile = UserProfile(
+                                        gender = cachedSettings.gender,
+                                        birthDate = cachedSettings.birthDate,
+                                        region = cachedSettings.region,
+                                        languagePreference = cachedSettings.languagePreference,
+                                        timezone = cachedSettings.timezone,
+                                        displayName = cachedSettings.displayName,
+                                        avatarUrl = cachedSettings.avatarUrl,
+                                        bio = cachedSettings.bio
+                                    )
+                                    
+                                    Log.d("UserSettings", "服务器获取失败，使用过期缓存数据 | 显示名称: ${cachedSettings.displayName ?: "未设置"}")
+                                    isSettingsLoading = false
+                                }
+                            } else {
+                                withContext(Dispatchers.Main) {
+                                    statusMessage = "加载设置失败: ${e.message}" to false
+                                    isSettingsLoading = false
+                                }
+                            }
+                        }
+                    }
                 }
             } catch (e: Exception) {
                 Log.e("UserSettings", "加载设置异常", e)
-                withContext(Dispatchers.Main) {
-                    isSettingsLoading = false
-                    statusMessage = "加载设置失败: ${e.message}" to false
-                }
+                statusMessage = "加载设置失败: ${e.message}" to false
+                isSettingsLoading = false
             }
         } else {
             isSettingsLoading = false
@@ -128,14 +198,14 @@ fun SupabaseUserSettings(
                 isSaving = true
                 
                 withContext(Dispatchers.IO) {
-                // 创建设置JSON
+                    // 创建设置JSON
                     val settings = buildJsonObject {
-                    // 保存个人资料字段
+                        // 保存个人资料字段
                         userProfile.gender?.let { put("gender", it) }
                         userProfile.birthDate?.let { put("birth_date", it) }
                         userProfile.region?.let { put("region", it) }
-                    put("language_preference", userProfile.languagePreference)
-                    put("timezone", userProfile.timezone)
+                        put("language_preference", userProfile.languagePreference)
+                        put("timezone", userProfile.timezone)
                         userProfile.displayName?.let { put("display_name", it) }
                         userProfile.avatarUrl?.let { put("avatar_url", it) }
                         userProfile.bio?.let { put("bio", it) }
@@ -146,12 +216,29 @@ fun SupabaseUserSettings(
                     val response = apiClient.updateUserSettings(settings)
                     
                     // 处理响应
-                        withContext(Dispatchers.Main) {
+                    withContext(Dispatchers.Main) {
                         val success = response.jsonObject["success"]?.jsonPrimitive?.content?.toBoolean() ?: false
                         if (success) {
+                            // 更新缓存
+                            val cachedSettings = SupabaseUserSettingsSessionManager.getCachedUserSettings(context)
+                            if (cachedSettings != null) {
+                                val updatedSettings = cachedSettings.copy(
+                                    gender = userProfile.gender,
+                                    birthDate = userProfile.birthDate,
+                                    region = userProfile.region,
+                                    languagePreference = userProfile.languagePreference,
+                                    timezone = userProfile.timezone,
+                                    displayName = userProfile.displayName,
+                                    avatarUrl = userProfile.avatarUrl,
+                                    bio = userProfile.bio
+                                )
+                                SupabaseUserSettingsSessionManager.saveUserSettings(context, updatedSettings)
+                                Log.d("UserSettings", "设置已更新并保存到缓存")
+                            }
+                            
                             Toast.makeText(context, "设置已保存", Toast.LENGTH_SHORT).show()
-                        statusMessage = "设置已保存" to true
-                    } else {
+                            statusMessage = "设置已保存" to true
+                        } else {
                             val errorMsg = response.jsonObject["error"]?.jsonPrimitive?.content ?: "未知错误"
                             Log.e("UserSettings", "保存设置失败: $errorMsg")
                             statusMessage = "保存设置失败: $errorMsg" to false
@@ -201,6 +288,11 @@ fun SupabaseUserSettings(
                         .padding(bottom = 16.dp)
                 )
             }
+            
+            // 缓存状态逻辑保留，但不再显示指示器
+            val lastLoadedTime = SupabaseUserSettingsSessionManager.getLastLoadedTime(context)
+            val currentTime = if (lastLoadedTime > 0) System.currentTimeMillis() else 0
+            val timeDiff = currentTime - lastLoadedTime
             
             // 个人资料设置
             SettingsSection(title = "个人资料") {
@@ -262,25 +354,101 @@ fun SupabaseUserSettings(
             
             Spacer(modifier = Modifier.height(24.dp))
             
-            // 保存按钮
-            Button(
-                onClick = { saveSettings() },
-                enabled = !isSaving,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFFFFD700),
-                    contentColor = Color.Black
-                ),
+            // 按钮行
+            Row(
                 modifier = Modifier
-                    .fillMaxWidth(0.7f)
-                    .height(48.dp)
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly
             ) {
-                if (isSaving) {
-                    CircularProgressIndicator(
-                        color = Color.Black,
-                        modifier = Modifier.size(24.dp)
-                    )
-                } else {
-                    Text("保存设置", fontWeight = FontWeight.Bold)
+                // 刷新按钮
+                Button(
+                    onClick = {
+                        // 手动使缓存失效并刷新数据
+                        SupabaseUserSettingsSessionManager.invalidateCache(context)
+                        isSettingsLoading = true
+                        
+                        scope.launch {
+                            try {
+                                withContext(Dispatchers.IO) {
+                                    val settings = loadUserSettings(context)
+                                    
+                                    withContext(Dispatchers.Main) {
+                                        userProfile = UserProfile(
+                                            gender = settings.gender,
+                                            birthDate = settings.birthDate,
+                                            region = settings.region,
+                                            languagePreference = settings.languagePreference,
+                                            timezone = settings.timezone,
+                                            displayName = settings.displayName,
+                                            avatarUrl = settings.avatarUrl,
+                                            bio = settings.bio
+                                        )
+                                        
+                                        // 保存到缓存
+                                        val userSettings = SupabaseUserSettingsSessionManager.UserSettings(
+                                            userId = userData?.userid ?: "",
+                                            theme = settings.theme,
+                                            playerSettings = JSONObject(settings.playerSettings.toString()),
+                                            notificationEnabled = settings.notificationEnabled,
+                                            gender = settings.gender,
+                                            birthDate = settings.birthDate,
+                                            region = settings.region,
+                                            languagePreference = settings.languagePreference,
+                                            timezone = settings.timezone,
+                                            displayName = settings.displayName,
+                                            avatarUrl = settings.avatarUrl,
+                                            bio = settings.bio
+                                        )
+                                        
+                                        SupabaseUserSettingsSessionManager.saveUserSettings(context, userSettings)
+                                        Log.d("UserSettings", "手动刷新：从服务器获取新的用户设置")
+                                        
+                                        isSettingsLoading = false
+                                        statusMessage = "设置已刷新" to true
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                Log.e("UserSettings", "刷新设置失败", e)
+                                isSettingsLoading = false
+                                statusMessage = "刷新设置失败: ${e.message}" to false
+                            }
+                        }
+                    },
+                    enabled = !isSettingsLoading,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF3498DB),
+                        contentColor = Color.White
+                    ),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(48.dp)
+                        .padding(end = 8.dp)
+                ) {
+                    Text("刷新设置", fontWeight = FontWeight.Bold)
+                }
+                
+                // 保存按钮
+                Button(
+                    onClick = { saveSettings() },
+                    enabled = !isSaving,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFFFFD700),
+                        contentColor = Color.Black
+                    ),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(48.dp)
+                        .padding(start = 8.dp)
+                ) {
+                    if (isSaving) {
+                        CircularProgressIndicator(
+                            color = Color.Black,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    } else {
+                        Text("保存设置", fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         }
@@ -415,7 +583,14 @@ data class UserSettings(
 data class PlayerSettings(
     val autoPlay: Boolean,
     val highQuality: Boolean
-)
+) {
+    /**
+     * 将PlayerSettings转换为JSON字符串
+     */
+    override fun toString(): String {
+        return "{\"autoPlay\":$autoPlay,\"highQuality\":$highQuality}"
+    }
+}
 
 /**
  * 用户个人资料数据类

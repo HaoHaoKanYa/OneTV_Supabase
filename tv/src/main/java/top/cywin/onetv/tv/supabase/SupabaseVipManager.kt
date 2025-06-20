@@ -63,6 +63,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
+import top.cywin.onetv.tv.supabase.SupabaseUserProfileInfoSessionManager
 
 private const val TAG = "VipManager"
 
@@ -97,39 +98,7 @@ fun SupabaseVipManager(
                     return@launch
                 }
                 
-                Log.d(TAG, "开始获取VIP状态, sessionId: ${session.take(8)}...")
-                
-                // 如果没有服务器端函数支持，则从用户数据构建VIP状态
-                if (userData != null) {
-                    try {
-                        val isVip = userData.is_vip
-                        val vipStart = userData.vipstart
-                        val vipEnd = userData.vipend
-                        
-                        Log.d(TAG, "从用户数据构建VIP状态: 是否VIP=$isVip, 开始=${vipStart}, 结束=${vipEnd}")
-                        
-                        // 计算剩余天数
-                        val remainingDays = if (vipEnd != null) {
-                            calculateVipRemainingDays(vipEnd)
-                        } else {
-                            0
-                        }
-                        
-                        vipStatus = VipStatus(
-                            isVip = isVip,
-                            vipStart = vipStart,
-                            vipEnd = vipEnd,
-                            daysRemaining = remainingDays
-                        )
-                        
-                        statusMessage = "已加载VIP状态" to true
-                        Log.d(TAG, "从缓存成功加载VIP状态: 剩余天数=$remainingDays")
-                        return@launch
-                    } catch (e: Exception) {
-                        Log.e(TAG, "从用户数据构建VIP状态失败", e)
-                        // 继续尝试服务器请求
-                    }
-                }
+                Log.d(TAG, "开始从服务器获取VIP状态, sessionId: ${session.take(8)}...")
                 
                 // 尝试调用服务器函数API
                 withContext(Dispatchers.IO) { // 确保网络请求在IO线程
@@ -195,7 +164,7 @@ fun SupabaseVipManager(
                                     daysRemaining = remainingDays
                                 )
                                 
-                                statusMessage = "使用缓存的VIP状态" to true
+                                statusMessage = "使用本地VIP状态" to true
                             } else {
                                 statusMessage = "获取VIP状态失败，请稍后再试" to false
                             }
@@ -288,36 +257,13 @@ fun SupabaseVipManager(
                                     
                                     Log.d(TAG, "VIP激活成功: $message, 天数: $days")
                                     
-                                    // 更新缓存
-                                    try {
-                                        // 获取更新后的用户数据要放在IO线程
-                                        val updatedUser = withContext(Dispatchers.IO) {
-                                            SupabaseUserRepository().getUserData(session)
-                                        }
-                                        SupabaseSessionManager.saveCachedUserData(context, updatedUser)
-                                        
-                                        // 更新状态
-                                        checkVipStatus()
-                                    } catch (e: Exception) {
-                                        Log.e(TAG, "更新用户数据失败", e)
-                                        // 如果更新失败，至少更新本地VIP状态
-                                        val now = Date()
-                                        val calendar = java.util.Calendar.getInstance()
-                                        calendar.time = now
-                                        calendar.add(java.util.Calendar.DAY_OF_YEAR, days)
-                                        val futureDate = calendar.time
-                                        
-                                        val dateFormatter = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-                                        val nowStr = dateFormatter.format(now)
-                                        val futureStr = dateFormatter.format(futureDate)
-                                        
-                                        vipStatus = VipStatus(
-                                            isVip = true,
-                                            vipStart = nowStr,
-                                            vipEnd = futureStr,
-                                            daysRemaining = days
-                                        )
-                                    }
+                                    // 激活成功后，强制刷新VIP状态
+                                    // 使用户资料缓存失效，确保下次加载时获取最新数据
+                                    SupabaseUserProfileInfoSessionManager.invalidateCache(context)
+                                    Log.d(TAG, "已使用户资料缓存失效，下次将从服务器获取最新数据")
+                                    
+                                    // 刷新VIP状态
+                                    checkVipStatus()
                                     
                                     Toast.makeText(context, "VIP激活成功，有效期 $days 天", Toast.LENGTH_LONG).show()
                                     statusMessage = "激活成功：$message" to true
@@ -368,6 +314,7 @@ fun SupabaseVipManager(
     // 初始加载
     LaunchedEffect(userData) {
         if (!isLoading && userData != null) {
+            // 每次打开界面都从服务器获取最新VIP状态
             checkVipStatus()
         }
     }
@@ -392,41 +339,6 @@ fun SupabaseVipManager(
                 modifier = Modifier.padding(16.dp)
             )
         } else {
-            // 标题和刷新按钮
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // 删除多余的"VIP管理中心"标题
-                
-                IconButton(
-                    onClick = { checkVipStatus() },
-                    enabled = !isCheckingStatus,
-                    modifier = Modifier
-                        .size(48.dp)
-                        .background(
-                            color = Color(0xFF2C3E50).copy(alpha = 0.8f),// 调整背景透明度
-                            shape = RoundedCornerShape(8.dp)
-                        )
-                ) {
-                    if (isCheckingStatus) {
-                        CircularProgressIndicator(
-                            color = Color(0xFFFFD700),
-                            modifier = Modifier.size(24.dp)
-                        )
-                    } else {
-                        Icon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription = "刷新",
-                            tint = Color(0xFFFFD700)
-                        )
-                    }
-                }
-            }
-            
             // 状态消息
             statusMessage?.let { (message, isSuccess) ->
                 Text(
@@ -450,13 +362,48 @@ fun SupabaseVipManager(
                     .padding(16.dp)
             ) {
                 Column(modifier = Modifier.fillMaxWidth()) {
-                    Text(
-                        text = "当前VIP状态",
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White,
-                        modifier = Modifier.padding(bottom = 8.dp)
-                    )
+                    // 标题和刷新按钮放在同一行
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "当前VIP状态",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                        
+                        // 刷新按钮移到标题行
+                        IconButton(
+                            onClick = { checkVipStatus() },
+                            enabled = !isCheckingStatus,
+                            modifier = Modifier
+                                .size(36.dp)
+                                .background(
+                                    color = Color(0xFF2C3E50), // 更接近整体背景
+                                    shape = RoundedCornerShape(4.dp)
+                                )
+                        ) {
+                            if (isCheckingStatus) {
+                                CircularProgressIndicator(
+                                    color = Color(0xFFFFD700),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Default.Refresh,
+                                    contentDescription = "刷新VIP状态",
+                                    tint = Color(0xFFFFD700),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                    }
+                    
+                    // 添加间距
+                    Spacer(modifier = Modifier.height(8.dp))
                     
                     vipStatus?.let { status ->
                         VipInfoRow(
