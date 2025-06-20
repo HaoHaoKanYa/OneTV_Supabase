@@ -172,3 +172,4 @@ iptv-V1-supabase.js
 
 # 运行时生成的文件
 /screenshots/
+/email_accounts.csv
