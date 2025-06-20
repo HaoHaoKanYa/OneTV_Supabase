@@ -85,10 +85,10 @@ USER_RULES.md
 # 敏感信息和配置文件
 *.properties
 local.properties
-gradle.properties
 keystore.properties
 *.keystore
 *.jks
+!gradle.properties  # 保留Gradle全局配置
 !gradle/wrapper/gradle-wrapper.properties  # 保留Gradle Wrapper配置文件
 !supabase/config.toml  # 保留Supabase配置文件
 
