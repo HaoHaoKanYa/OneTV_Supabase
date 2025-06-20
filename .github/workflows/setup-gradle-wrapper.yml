@@ -1,0 +1,39 @@
+name: Setup Gradle Wrapper
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/setup-gradle-wrapper.yml'
+
+jobs:
+  setup-wrapper:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Setup JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+      
+      - name: Generate Gradle Wrapper
+        run: |
+          gradle wrapper --gradle-version 8.7
+      
+      - name: Commit and push changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          
+          git add gradle/wrapper/
+          git add gradlew
+          git add gradlew.bat
+          
+          git commit -m "Setup Gradle Wrapper"
+          git push 
