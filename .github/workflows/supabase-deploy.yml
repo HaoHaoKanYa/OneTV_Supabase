@@ -1,0 +1,93 @@
+name: Supabase Deploy
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - 'supabase/functions/**'  # 只监控函数目录变化，不监控SQL目录
+  workflow_dispatch:
+    inputs:
+      deploy_sql:
+        description: '是否部署SQL文件（危险操作，可能覆盖数据）'
+        required: true
+        default: false
+        type: boolean
+      deploy_functions:
+        description: '是否部署Edge Functions'
+        required: true
+        default: true
+        type: boolean
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      BOOTSTRAP_URL: ${{ secrets.BOOTSTRAP_URL }}
+      BOOTSTRAP_KEY: ${{ secrets.BOOTSTRAP_KEY }}
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+        cache: 'npm'
+    
+    - name: Install Supabase CLI
+      run: npm install -g supabase
+    
+    - name: Install dependencies
+      run: |
+        cd supabase
+        npm install
+    
+    - name: Deploy Edge Functions to Supabase
+      if: ${{ github.event.inputs.deploy_functions != 'false' }}
+      run: |
+        cd supabase
+        supabase login --token ${{ secrets.SUPABASE_ACCESS_TOKEN || '' }}
+        if [ -n "${{ secrets.SUPABASE_ACCESS_TOKEN }}" ]; then
+          echo "连接到Supabase项目..."
+          project_ref=$(echo $BOOTSTRAP_URL | cut -d'.' -f1 | cut -d'/' -f3)
+          supabase link --project-ref $project_ref
+          
+          echo "部署Edge Functions..."
+          supabase functions deploy --project-ref $project_ref
+          echo "Edge Functions部署完成"
+        else
+          echo "SUPABASE_ACCESS_TOKEN未设置，跳过部署"
+        fi
+      env:
+        BOOTSTRAP_URL: ${{ secrets.BOOTSTRAP_URL }}
+        BOOTSTRAP_KEY: ${{ secrets.BOOTSTRAP_KEY }}
+        
+    - name: Deploy SQL to Supabase (危险操作)
+      if: ${{ github.event.inputs.deploy_sql == 'true' }}
+      run: |
+        cd supabase
+        echo "⚠️ 警告: 即将部署SQL更改，此操作可能会覆盖数据库结构和数据 ⚠️"
+        echo "等待5秒，如果需要取消，请立即停止工作流..."
+        sleep 5
+        
+        supabase login --token ${{ secrets.SUPABASE_ACCESS_TOKEN || '' }}
+        if [ -n "${{ secrets.SUPABASE_ACCESS_TOKEN }}" ]; then
+          project_ref=$(echo $BOOTSTRAP_URL | cut -d'.' -f1 | cut -d'/' -f3)
+          supabase link --project-ref $project_ref
+          
+          # 创建数据库备份
+          echo "创建数据库备份..."
+          timestamp=$(date +"%Y%m%d_%H%M%S")
+          backup_file="supabase_backup_${timestamp}.sql"
+          supabase db dump -f $backup_file
+          
+          echo "正在推送SQL更改到数据库..."
+          supabase db push
+          echo "SQL部署完成"
+        else
+          echo "SUPABASE_ACCESS_TOKEN未设置，跳过部署"
+        fi
+      env:
+        BOOTSTRAP_URL: ${{ secrets.BOOTSTRAP_URL }}
+        BOOTSTRAP_KEY: ${{ secrets.BOOTSTRAP_KEY }} 

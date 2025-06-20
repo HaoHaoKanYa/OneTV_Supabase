@@ -1,0 +1,136 @@
+name: Check Supabase Config
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 0 * * 1'  # 每周一午夜运行
+
+jobs:
+  check-config:
+    runs-on: ubuntu-latest
+    env:
+      BOOTSTRAP_URL: ${{ secrets.BOOTSTRAP_URL }}
+      BOOTSTRAP_KEY: ${{ secrets.BOOTSTRAP_KEY }}
+
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+    
+    - name: Install dependencies
+      run: npm install @supabase/supabase-js
+    
+    - name: Check Supabase connection
+      run: |
+        cat > check-connection.js << 'EOF'
+        const { createClient } = require('@supabase/supabase-js');
+        
+        async function checkConnection() {
+          const supabaseUrl = process.env.BOOTSTRAP_URL;
+          const supabaseKey = process.env.BOOTSTRAP_KEY;
+          
+          if (!supabaseUrl || !supabaseKey) {
+            console.error('环境变量未设置: BOOTSTRAP_URL 或 BOOTSTRAP_KEY');
+            process.exit(1);
+          }
+          
+          try {
+            const supabase = createClient(supabaseUrl, supabaseKey);
+            const { data, error } = await supabase.from('health_check').select('*').limit(1);
+            
+            if (error) {
+              console.error('Supabase 连接错误:', error.message);
+              process.exit(1);
+            }
+            
+            console.log('Supabase 连接成功!');
+            console.log('数据库状态: 正常');
+            process.exit(0);
+          } catch (err) {
+            console.error('检查过程中出现错误:', err.message);
+            process.exit(1);
+          }
+        }
+        
+        checkConnection();
+        EOF
+        
+        node check-connection.js
+      env:
+        BOOTSTRAP_URL: ${{ secrets.BOOTSTRAP_URL }}
+        BOOTSTRAP_KEY: ${{ secrets.BOOTSTRAP_KEY }}
+    
+    - name: Create health_check table if not exists
+      if: success()
+      run: |
+        cat > create-table.js << 'EOF'
+        const { createClient } = require('@supabase/supabase-js');
+        
+        async function createHealthCheckTable() {
+          const supabaseUrl = process.env.BOOTSTRAP_URL;
+          const supabaseKey = process.env.BOOTSTRAP_KEY;
+          
+          try {
+            const supabase = createClient(supabaseUrl, supabaseKey);
+            
+            // 检查表是否存在
+            const { data: existingTable, error: checkError } = await supabase
+              .from('health_check')
+              .select('*')
+              .limit(1)
+              .catch(() => ({ data: null }));
+            
+            if (checkError && checkError.code === '42P01') {
+              // 表不存在，创建表
+              const { error: createError } = await supabase.rpc('create_health_check_table');
+              
+              if (createError) {
+                console.error('创建 health_check 表失败:', createError.message);
+                process.exit(1);
+              }
+              
+              console.log('health_check 表创建成功');
+              
+              // 插入初始数据
+              const { error: insertError } = await supabase
+                .from('health_check')
+                .insert([{ status: 'ok', last_checked: new Date().toISOString() }]);
+              
+              if (insertError) {
+                console.error('插入初始数据失败:', insertError.message);
+                process.exit(1);
+              }
+              
+              console.log('初始健康检查数据插入成功');
+            } else {
+              // 表已存在，更新检查时间
+              const { error: updateError } = await supabase
+                .from('health_check')
+                .update({ last_checked: new Date().toISOString() })
+                .eq('id', 1);
+              
+              if (updateError) {
+                console.error('更新健康检查数据失败:', updateError.message);
+                process.exit(1);
+              }
+              
+              console.log('健康检查数据更新成功');
+            }
+            
+            process.exit(0);
+          } catch (err) {
+            console.error('操作过程中出现错误:', err.message);
+            process.exit(1);
+          }
+        }
+        
+        createHealthCheckTable();
+        EOF
+        
+        node create-table.js
+      env:
+        BOOTSTRAP_URL: ${{ secrets.BOOTSTRAP_URL }}
+        BOOTSTRAP_KEY: ${{ secrets.BOOTSTRAP_KEY }} 

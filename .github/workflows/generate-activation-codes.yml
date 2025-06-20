@@ -1,0 +1,49 @@
+name: Generate Activation Codes
+
+on:
+  schedule:
+    - cron: '0 0 * * 0'  # 每周日午夜运行
+  workflow_dispatch:
+    inputs:
+      count:
+        description: '要生成的激活码数量'
+        required: true
+        default: '10'
+        type: number
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    env:
+      BOOTSTRAP_URL: ${{ secrets.BOOTSTRAP_URL }}
+      BOOTSTRAP_KEY: ${{ secrets.BOOTSTRAP_KEY }}
+
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install supabase
+        pip install python-dotenv
+        
+    - name: Generate activation codes
+      run: |
+        cd py
+        python generate_activation_codes.py ${{ github.event.inputs.count || '10' }}
+      env:
+        BOOTSTRAP_URL: ${{ secrets.BOOTSTRAP_URL }}
+        BOOTSTRAP_KEY: ${{ secrets.BOOTSTRAP_KEY }}
+        
+    - name: Commit new activation codes
+      run: |
+        git config --local user.email "github-actions[bot]@users.noreply.github.com"
+        git config --local user.name "github-actions[bot]"
+        git add activation_codes_*.txt
+        git commit -m "Auto-generate activation codes [skip ci]" || echo "No changes to commit"
+        git push 

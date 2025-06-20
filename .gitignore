@@ -1,0 +1,175 @@
+# Gradle files
+.gradle/
+build/
+
+# Local configuration file (sdk path, etc)
+local.properties
+
+# Log/OS Files
+*.log
+
+# Android Studio generated files and folders
+captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+output.json
+
+# IntelliJ
+*.iml
+.idea/
+misc.xml
+deploymentTargetDropDown.xml
+render.experimental.xml
+
+# Keystore files
+*.jks
+*.keystore
+
+# Google Services (e.g. APIs or Firebase)
+google-services.json
+
+# Android Profiling
+*.hprof
+
+# Sensitive information
+supabase_config.properties
+node_modules/
+package.json
+package-lock.json
+
+# Environment variables and secrets
+.env
+.env.*
+*.env
+env.local
+env.development.local
+env.test.local
+env.production.local
+
+# API keys and secrets
+api_keys.txt
+secrets.yaml
+secrets.yml
+secrets.properties
+
+# Authentication files
+auth_config.json
+auth.json
+credentials.json
+
+# Configuration files that might contain sensitive data
+config.json
+settings.json
+application.properties
+application.yml
+application.yaml
+/local.properties.example
+
+# Additional directories and files to ignore
+/CSV/
+/MD/
+/Review-Gate/
+/qrose-local/
+Cursor-Rules.md
+USER_RULES.md
+/googel/
+/supabase-kt-3.1.4/
+/Review-Gate/
+
+# Supabase特定排除（保留功能允许自动部署）
+/supabase/.temp/
+/supabase/.env
+# 不要排除整个supabase目录，只排除敏感或临时文件
+
+# 敏感信息和配置文件
+*.properties
+local.properties
+gradle.properties
+keystore.properties
+*.keystore
+*.jks
+!supabase/config.toml  # 保留Supabase配置文件
+
+# 环境变量文件
+.env
+.env.*
+
+# 构建文件和目录
+/build/
+/release
+/sentry.properties
+/OneTV_Supabase _Key
+/app/build/
+/*/build/
+.gradle/
+.idea/
+*.iml
+.DS_Store
+
+# 日志文件
+*.log
+build.log
+build_tail.log
+build_head.log
+onetv_error.log
+
+# 临时文件
+*.tmp
+*.temp
+/tmp/
+/temp/
+
+# 编译输出
+/bin/
+/out/
+/gen/
+/captures/
+
+# 特定于IDE的文件
+.externalNativeBuild/
+.cxx/
+*.swp
+*.swo
+.cursor/
+.vscode/
+
+# 特定于Android的文件
+/local.properties
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+/proguardFiles/
+/lint/intermediates/
+/lint/generated/
+/lint/outputs/
+/lint/tmp/
+
+# 用户特定设置
+.gradle/
+.idea/
+/py/
+
+# 激活码文件
+activation_codes_*.txt
+
+# 备份目录
+/backup/
+
+# 自动生成的文件
+.kotlin/
+
+# 测试JSON文件
+tv-beta.json
+tv-stable.json
+
+# 其他项目特定文件
+exclude.txt
+onetvkey.jks
+iptv-V1-supabase.js
+
+# 运行时生成的文件
+/screenshots/

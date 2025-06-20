@@ -1,0 +1,85 @@
+name: Release
+on:
+  push:
+    tags:
+      - v*
+
+jobs:
+  build:
+    name: Build On (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    env:
+      TZ: Asia/Shanghai
+      BOOTSTRAP_URL: ${{ secrets.BOOTSTRAP_URL }}
+      BOOTSTRAP_KEY: ${{ secrets.BOOTSTRAP_KEY }}
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+    permissions:
+      contents: write
+      security-events: write
+      pull-requests: write
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ["ubuntu-latest"]
+
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Setup Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Set up Supabase configuration
+        run: |
+          echo "BOOTSTRAP_URL=${{ secrets.BOOTSTRAP_URL }}" > supabase_config.properties
+          echo "BOOTSTRAP_KEY=${{ secrets.BOOTSTRAP_KEY }}" >> supabase_config.properties
+          echo "配置文件已创建"
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Build with Gradle
+        run: ./gradlew assembleRelease
+        env:
+          BOOTSTRAP_URL: ${{ secrets.BOOTSTRAP_URL }}
+          BOOTSTRAP_KEY: ${{ secrets.BOOTSTRAP_KEY }}
+
+      - name: Get Commit Messages
+        id: get_git_latest_message
+        run: |
+          message=$(git log -1 --format=%B HEAD)
+          echo "Latest Message is ${message}"
+          echo "git_latest=${message}" >> $GITHUB_OUTPUT
+
+      - name: Get Current Time
+        id: get_current_time
+        run: |
+          current_time=$(date +%Y-%m-%d\ %H:%M:%S)
+          echo "current_time is ${current_time}"
+          echo "current_time=${current_time}" >> $GITHUB_OUTPUT
+
+      - name: Generate Changelog
+        run: |
+          echo "# ${{ github.ref_name }}" > ${{ github.workspace }}-CHANGELOG.txt
+          echo "## ${{steps.get_current_time.outputs.current_time}} ${{ github.ref_name }}" >> ${{ github.workspace }}-CHANGELOG.txt
+          echo "### OneTV Supabase Update" >> ${{ github.workspace }}-CHANGELOG.txt
+          echo "* ${{steps.get_git_latest_message.outputs.git_latest}}" >> ${{ github.workspace }}-CHANGELOG.txt
+
+      - name: Deploy
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          body_path: ${{ github.workspace }}-CHANGELOG.txt
+          files: |
+            **/build/outputs/apk/release/*.apk
+            **/build/outputs/bundle/release/*.aab
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
