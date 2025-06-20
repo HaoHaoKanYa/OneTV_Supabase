@@ -8,14 +8,23 @@ OneTV是一款基于Android TV的全新流媒体应用，使用Su云作为后端
 
 ## 构建状态
 
-| 工作流          | 状态                                                                                                                  |
-| --------------- | --------------------------------------------------------------------------------------------------------------------- |
-| Android CI      | ![Android CI](https://github.com/HaoHaoKanYa/OneTV_Supabase/actions/workflows/android.yml/badge.svg)                    |
-| Release         | ![Release](https://github.com/HaoHaoKanYa/OneTV_Supabase/actions/workflows/release.yaml/badge.svg)                      |
-| Supabase Deploy | ![Supabase Deploy](https://github.com/HaoHaoKanYa/OneTV_Supabase/actions/workflows/supabase-deploy.yml/badge.svg)       |
+
+
+| 工作流 | 状态 |
+
+|-------|------|
+
+| Android CI | ![Android CI](https://github.com/HaoHaoKanYa/OneTV_Supabase/actions/workflows/android.yml/badge.svg) |
+
+| Release | ![Release](https://github.com/HaoHaoKanYa/OneTV_Supabase/actions/workflows/release.yaml/badge.svg) |
+
+| Supabase Deploy | ![Supabase Deploy](https://github.com/HaoHaoKanYa/OneTV_Supabase/actions/workflows/supabase-deploy.yml/badge.svg) |
+
 | Supabase Config | ![Supabase Config](https://github.com/HaoHaoKanYa/OneTV_Supabase/actions/workflows/check-supabase-config.yml/badge.svg) |
 
-## 🌟 主要特性
+
+
+
 
 - **全新UI界面**: 完全重新设计的透明UI，视觉效果更加现代化
 - **Su集成**: 完全迁移至Su云，提供更可靠的后端服务
