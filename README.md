@@ -26,16 +26,6 @@ OneTV是一款基于Android TV的全新流媒体应用，使用Su云作为后端
 
 
 
-- **语言**: Kotlin
-- **UI框架**: Jetpack Compose
-- **后端**: Su云 (身份验证、数据库、存储、函数)
-- **依赖注入**: Koin
-- **网络**: Ktor
-- **异步处理**: Kotlin Coroutines
-- **图片加载**: Coil
-
-## 📋 环境要求
-
 - Android Studio 2023.3.1 或更高版本
 - JDK 17+
 - Gradle 8.6+
