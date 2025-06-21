@@ -31,7 +31,7 @@ import top.cywin.onetv.tv.ui.theme.MyTVTheme
  * 使用Supabase Auth UI进行密码重置，支持横竖屏切换
  */
 class SupabaseForgotPasswordActivity : ComponentActivity() {
-    private val log = Logger.create("SupabaseForgotPasswordActivity")
+    private val log = Logger.create("ForgotPasswordActivity")
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

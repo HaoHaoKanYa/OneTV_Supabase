@@ -31,7 +31,7 @@ import kotlinx.serialization.json.jsonPrimitive
  * 负责在本地管理和缓存观看历史记录，并在适当的时候与服务器同步
  */
 object SupabaseWatchHistorySessionManager {
-    private const val TAG = "SupabaseWatchHistorySessionManager"
+    private const val TAG = "WatchHistoryManager"
     private const val PREF_NAME = "watch_history_prefs"
     private const val KEY_WATCH_HISTORY = "watch_history_data"
     private const val KEY_LAST_SYNC = "last_sync_time"
@@ -60,7 +60,6 @@ object SupabaseWatchHistorySessionManager {
     /**
      * 初始化管理器，从本地存储加载数据
      */
-    @SuppressLint("LongLogTag")
     fun initialize(context: Context) {
         Log.d(TAG, "初始化观看历史管理器")
         
