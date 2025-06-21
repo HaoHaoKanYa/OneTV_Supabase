@@ -6,25 +6,3 @@
 
 OneTV是一款基于Android TV的全新流媒体应用，使用Su云作为后端服务。本项目从1.41版本直接跳更至2.0.0，带来全新的用户体验和更稳定的性能。
 
-## 构建状态
-
-
-
-| 工作流 | 状态 |
-
-|-------|------|
-
-| Android CI | ![Android CI](https://github.com/HaoHaoKanYa/OneTV_Supabase/actions/workflows/android.yml/badge.svg) |
-
-| Release | ![Release](https://github.com/HaoHaoKanYa/OneTV_Supabase/actions/workflows/release.yaml/badge.svg) |
-
-| Supabase Deploy | ![Supabase Deploy](https://github.com/HaoHaoKanYa/OneTV_Supabase/actions/workflows/supabase-deploy.yml/badge.svg) |
-
-| Supabase Config | ![Supabase Config](https://github.com/HaoHaoKanYa/OneTV_Supabase/actions/workflows/check-supabase-config.yml/badge.svg) |
-
-
-
-
-
-- Python 3.6或更高版本
-- 无需额外依赖库
