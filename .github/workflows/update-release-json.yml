@@ -39,7 +39,6 @@ jobs:
           
           TAG_NAME=$(echo "$LATEST_RELEASE" | jq -r '.tag_name')
           RELEASE_URL=$(echo "$LATEST_RELEASE" | jq -r '.html_url')
-          RELEASE_BODY=$(echo "$LATEST_RELEASE" | jq -r '.body')
           
           echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
           echo "release_url=$RELEASE_URL" >> $GITHUB_OUTPUT
@@ -52,11 +51,42 @@ jobs:
           VERSION=$(echo "$TAG_NAME" | sed 's/^v//')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           
-          # 将发布说明保存到文件
-          echo "$RELEASE_BODY" > release_body.txt
-          
           echo "获取到的版本: $VERSION"
           echo "发布URL: $RELEASE_URL"
+      
+      - name: Extract changelog for current version
+        id: extract_changelog
+        run: |
+          # 从CHANGELOG.md提取当前版本的更新日志
+          VERSION="${{ steps.release.outputs.version }}"
+          echo "提取版本: $VERSION 的更新日志"
+          
+          # 使用awk提取CHANGELOG.md中当前版本的内容
+          # 从"## [$VERSION]"开始，到下一个"## ["或文件结束为止
+          awk -v version="$VERSION" '
+            BEGIN { found=0; output=""; }
+            /^## \['"$VERSION"'\]/ { found=1; }
+            found == 1 { output = output $0 "\n"; }
+            /^## \[/ && !/^## \['"$VERSION"'\]/ { if (found == 1) found=2; }
+            END { print output; }
+          ' CHANGELOG.md > version_changelog.txt
+          
+          # 如果提取失败，使用默认消息
+          if [ ! -s version_changelog.txt ]; then
+            echo "未找到版本 $VERSION 的更新日志，使用默认消息"
+            echo "# ${{ steps.release.outputs.tag_name }}" > version_changelog.txt
+            echo "## OneTV Supabase Update" >> version_changelog.txt
+            echo "* 发布版本 $VERSION" >> version_changelog.txt
+          else
+            echo "成功提取版本 $VERSION 的更新日志"
+            cat version_changelog.txt
+          fi
+          
+          # 将更新日志保存为输出
+          CHANGELOG_CONTENT=$(cat version_changelog.txt)
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGELOG_CONTENT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
       
       - name: Get APK download URL
         id: apk_url
@@ -81,8 +111,8 @@ jobs:
       
       - name: Update tv-stable.json
         run: |
-          # 读取发布说明
-          DESCRIPTION=$(cat release_body.txt)
+          # 读取从CHANGELOG.md提取的更新日志
+          DESCRIPTION="${{ steps.extract_changelog.outputs.changelog }}"
           
           # 创建新的tv-stable.json文件
           cat << EOF > tv-stable.json
