@@ -1,6 +1,6 @@
 {
   "version": "2.0.0",
-  "downloadUrl": "https://github.com/HaoHaoKanYa/OneTV_Supabase/releases/download/v2.0.0/onetv-android-mobile-2.0.0-all-sdk24.apk",
+  "downloadUrl": "https://github.com/HaoHaoKanYa/OneTV_Supabase/releases/download/v2.0.0/onetv-android-tv-2.0.0-all-sdk21.apk",
   "description": "## [2.0.0] - 2025-06-18
 
 ### 重大更新
@@ -39,7 +39,5 @@
 - 优化的错误提示和用户反馈机制
 - 完善的应用内更新系统
 
-> 注意：此版本与旧版本不完全兼容，升级后需要重新登录。
-
-## [1.4.1] - 2025-05-15"
+> 注意：此版本与旧版本不完全兼容，升级后需要重新登录。"
 }
