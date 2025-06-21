@@ -122,7 +122,18 @@
             android:exported="false"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
             android:theme="@style/Theme.Transparent" />
-
+        <!-- 暂时注释掉DefaultRedirectActivity
+        <activity
+            android:name="io.github.jan.supabase.auth.redirects.DefaultRedirectActivity" 
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="io.onetv.app" android:host="auth-callback" />
+            </intent-filter>
+        </activity>
+        -->
 
     </application>
 
