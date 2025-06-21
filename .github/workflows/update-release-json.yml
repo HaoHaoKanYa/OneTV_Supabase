@@ -62,20 +62,20 @@ jobs:
           echo "提取版本: $VERSION 的更新日志"
           
           # 使用awk提取CHANGELOG.md中当前版本的内容
-          # 从"## [$VERSION]"开始，到下一个"## ["或文件结束为止
+          # 从"## [$VERSION]"开始，到下一个"## ["为止（不包含下一个版本的标题行）
           awk -v version="$VERSION" '
             BEGIN { found=0; output=""; }
-            /^## \['"$VERSION"'\]/ { found=1; }
+            /^## \['"$VERSION"'\]/ { found=1; output = output $0 "\n"; next; }
+            found == 1 && /^## \[/ { found=2; next; }
             found == 1 { output = output $0 "\n"; }
-            /^## \[/ && !/^## \['"$VERSION"'\]/ { if (found == 1) found=2; }
             END { print output; }
           ' CHANGELOG.md > version_changelog.txt
           
           # 如果提取失败，使用默认消息
           if [ ! -s version_changelog.txt ]; then
             echo "未找到版本 $VERSION 的更新日志，使用默认消息"
-            echo "# ${{ steps.release.outputs.tag_name }}" > version_changelog.txt
-            echo "## OneTV Supabase Update" >> version_changelog.txt
+            echo "## [$VERSION] - $(date +"%Y-%m-%d")" > version_changelog.txt
+            echo "### OneTV Supabase Update" >> version_changelog.txt
             echo "* 发布版本 $VERSION" >> version_changelog.txt
           else
             echo "成功提取版本 $VERSION 的更新日志"
@@ -88,7 +88,7 @@ jobs:
           echo "$CHANGELOG_CONTENT" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
       
-      - name: Get APK download URL
+      - name: Get TV APK download URL
         id: apk_url
         run: |
           # 使用GitHub API获取最新发布的资源列表
@@ -98,10 +98,16 @@ jobs:
           ASSETS_URL=$(echo "$LATEST_RELEASE" | jq -r '.assets_url')
           ASSETS_JSON=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" "$ASSETS_URL")
           
-          # 提取APK下载链接 (取第一个APK文件)
-          APK_URL=$(echo "$ASSETS_JSON" | jq -r '.[] | select(.name | endswith(".apk")) | .browser_download_url' | head -n 1)
+          # 提取TV版本的APK下载链接（包含"android-tv"的APK文件）
+          APK_URL=$(echo "$ASSETS_JSON" | jq -r '.[] | select(.name | contains("android-tv")) | select(.name | endswith(".apk")) | .browser_download_url' | head -n 1)
           
-          # 如果找不到APK，使用默认链接
+          # 如果找不到TV版本，尝试找任何APK文件
+          if [ -z "$APK_URL" ]; then
+            echo "未找到TV版本APK，尝试查找任何APK文件"
+            APK_URL=$(echo "$ASSETS_JSON" | jq -r '.[] | select(.name | endswith(".apk")) | .browser_download_url' | head -n 1)
+          fi
+          
+          # 如果仍然找不到APK，使用默认链接
           if [ -z "$APK_URL" ]; then
             APK_URL=$(echo "$LATEST_RELEASE" | jq -r '.html_url')
           fi

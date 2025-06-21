@@ -55,8 +55,8 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Build with Gradle
-        run: ./gradlew assembleRelease
+      - name: Build TV APK with Gradle
+        run: ./gradlew :tv:assembleRelease
         env:
           BOOTSTRAP_URL: ${{ secrets.BOOTSTRAP_URL }}
           BOOTSTRAP_KEY: ${{ secrets.BOOTSTRAP_KEY }}
@@ -80,20 +80,20 @@ jobs:
           echo "提取版本: $VERSION 的更新日志"
           
           # 使用awk提取CHANGELOG.md中当前版本的内容
-          # 从"## [$VERSION]"开始，到下一个"## ["或文件结束为止
+          # 从"## [$VERSION]"开始，到下一个"## ["为止（不包含下一个版本的标题行）
           awk -v version="$VERSION" '
             BEGIN { found=0; output=""; }
-            /^## \['"$VERSION"'\]/ { found=1; }
+            /^## \['"$VERSION"'\]/ { found=1; output = output $0 "\n"; next; }
+            found == 1 && /^## \[/ { found=2; next; }
             found == 1 { output = output $0 "\n"; }
-            /^## \[/ && !/^## \['"$VERSION"'\]/ { if (found == 1) found=2; }
             END { print output; }
           ' CHANGELOG.md > version_changelog.txt
           
           # 如果提取失败，使用默认消息
           if [ ! -s version_changelog.txt ]; then
             echo "未找到版本 $VERSION 的更新日志，使用默认消息"
-            echo "# ${{ github.ref_name }}" > version_changelog.txt
-            echo "## OneTV Supabase Update" >> version_changelog.txt
+            echo "## [$VERSION] - $(date +"%Y-%m-%d")" > version_changelog.txt
+            echo "### OneTV Supabase Update" >> version_changelog.txt
             echo "* 发布版本 $VERSION" >> version_changelog.txt
           else
             echo "成功提取版本 $VERSION 的更新日志"
@@ -106,7 +106,7 @@ jobs:
         with:
           body_path: version_changelog.txt
           files: |
-            **/build/outputs/apk/release/*.apk
-            **/build/outputs/bundle/release/*.aab
+            **/tv/build/outputs/apk/release/*.apk
+            **/tv/build/outputs/bundle/release/*.aab
         env:
           GITHUB_TOKEN: ${{ github.token }}
