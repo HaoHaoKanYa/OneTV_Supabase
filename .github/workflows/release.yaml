@@ -27,6 +27,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: main
+          fetch-depth: 0  # 获取完整历史记录，确保能够访问所有标签
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -64,32 +65,46 @@ jobs:
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
 
-      - name: Get Commit Messages
-        id: get_git_latest_message
+      - name: Extract version number
+        id: extract_version
         run: |
-          message=$(git log -1 --format=%B HEAD)
-          echo "Latest Message is ${message}"
-          echo "git_latest=${message}" >> $GITHUB_OUTPUT
+          # 从标签名提取版本号（移除'v'前缀）
+          VERSION=$(echo "${{ github.ref_name }}" | sed 's/^v//')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-      - name: Get Current Time
-        id: get_current_time
+      - name: Extract changelog for current version
+        id: extract_changelog
         run: |
-          current_time=$(date +%Y-%m-%d\ %H:%M:%S)
-          echo "current_time is ${current_time}"
-          echo "current_time=${current_time}" >> $GITHUB_OUTPUT
-
-      - name: Generate Changelog
-        run: |
-          echo "# ${{ github.ref_name }}" > ${{ github.workspace }}-CHANGELOG.txt
-          echo "## ${{steps.get_current_time.outputs.current_time}} ${{ github.ref_name }}" >> ${{ github.workspace }}-CHANGELOG.txt
-          echo "### OneTV Supabase Update" >> ${{ github.workspace }}-CHANGELOG.txt
-          echo "* ${{steps.get_git_latest_message.outputs.git_latest}}" >> ${{ github.workspace }}-CHANGELOG.txt
+          # 提取当前版本的更新日志
+          VERSION="${{ steps.extract_version.outputs.version }}"
+          echo "提取版本: $VERSION 的更新日志"
+          
+          # 使用awk提取CHANGELOG.md中当前版本的内容
+          # 从"## [$VERSION]"开始，到下一个"## ["或文件结束为止
+          awk -v version="$VERSION" '
+            BEGIN { found=0; output=""; }
+            /^## \['"$VERSION"'\]/ { found=1; }
+            found == 1 { output = output $0 "\n"; }
+            /^## \[/ && !/^## \['"$VERSION"'\]/ { if (found == 1) found=2; }
+            END { print output; }
+          ' CHANGELOG.md > version_changelog.txt
+          
+          # 如果提取失败，使用默认消息
+          if [ ! -s version_changelog.txt ]; then
+            echo "未找到版本 $VERSION 的更新日志，使用默认消息"
+            echo "# ${{ github.ref_name }}" > version_changelog.txt
+            echo "## OneTV Supabase Update" >> version_changelog.txt
+            echo "* 发布版本 $VERSION" >> version_changelog.txt
+          else
+            echo "成功提取版本 $VERSION 的更新日志"
+            cat version_changelog.txt
+          fi
 
       - name: Deploy
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
         with:
-          body_path: ${{ github.workspace }}-CHANGELOG.txt
+          body_path: version_changelog.txt
           files: |
             **/build/outputs/apk/release/*.apk
             **/build/outputs/bundle/release/*.aab

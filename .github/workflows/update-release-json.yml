@@ -3,16 +3,18 @@ name: Update Release JSON
 on:
   release:
     types: [published]  # 当新的Release被发布时触发
+  workflow_dispatch:  # 添加手动触发选项
 
 jobs:
   update-json:
     runs-on: ubuntu-latest
     permissions:
       contents: write  # 需要写入权限来更新文件
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           ref: main  # 确保检出main分支
       
@@ -20,6 +22,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '18'
+          cache: 'npm'
       
       - name: Get release details
         id: release
@@ -69,8 +72,8 @@ jobs:
       
       - name: Commit and push changes
         run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
           
           git add tv-stable.json
           
@@ -81,6 +84,6 @@ jobs:
           fi
           
           git commit -m "Update tv-stable.json for ${{ steps.release.outputs.tag_name }}"
-          git push origin main
+          git push
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
