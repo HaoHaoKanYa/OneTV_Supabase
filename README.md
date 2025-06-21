@@ -11,16 +11,23 @@
 
 ## 构建状态
 
+
+
 | 工作流 | 状态 |
+
 |-------|------|
+
 | Android CI | ![Android CI](https://github.com/HaoHaoKanYa/OneTV_Supabase/actions/workflows/android.yml/badge.svg) |
+
 | Release | ![Release](https://github.com/HaoHaoKanYa/OneTV_Supabase/actions/workflows/release.yaml/badge.svg) |
+
 | Supabase Deploy | ![Supabase Deploy](https://github.com/HaoHaoKanYa/OneTV_Supabase/actions/workflows/supabase-deploy.yml/badge.svg) |
+
 | Supabase Config | ![Supabase Config](https://github.com/HaoHaoKanYa/OneTV_Supabase/actions/workflows/check-supabase-config.yml/badge.svg) |
 
-OneTV 是一款基于 Android TV 的现代化流媒体应用，采用 Supabase 作为后端服务。从 1.4.1 版本全面升级至 2.0.0，带来了革命性的用户体验提升和性能优化。
 
-## 🌟 主要特性
+
+
 
 - **全平台架构重构**：采用 Kotlin Multiplatform 技术，实现代码共享，支持 Android TV 和移动设备
 - **Supabase 集成升级**：完全利用 Supabase 2.0 API，提高数据安全性和可靠性
