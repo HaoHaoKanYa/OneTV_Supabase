@@ -26,14 +26,6 @@ OneTV是一款基于Android TV的全新流媒体应用，使用Su云作为后端
 
 
 
-项目需要配置以下环境变量:
-
-```properties
-见应用内
-```
-
-### 本地开发
-
 1. 见应用内
 2. 见应用内
 3. 使用Android Studio打开项目并同步Gradle
