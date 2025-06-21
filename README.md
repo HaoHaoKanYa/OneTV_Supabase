@@ -26,14 +26,6 @@ OneTV是一款基于Android TV的全新流媒体应用，使用Su云作为后端
 
 
 
-- Android Studio 2023.3.1 或更高版本
-- JDK 17+
-- Gradle 8.6+
-- Android SDK 34 (最低支持 API 26)
-- Kotlin 2.1.10
-
-## 🚀 快速开始
-
 ### 环境变量配置
 
 项目需要配置以下环境变量:
