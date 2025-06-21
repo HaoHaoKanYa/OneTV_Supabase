@@ -5,6 +5,7 @@ on:
     workflows: ["Android CI", "Release", "Supabase Deploy", "Check Supabase Config"]
     types:
       - completed
+  workflow_dispatch:  # 添加手动触发选项
 
 jobs:
   update-status:
@@ -13,8 +14,7 @@ jobs:
       contents: write
     
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+    - uses: actions/checkout@v4
     
     - name: Update README with build status
       run: |
