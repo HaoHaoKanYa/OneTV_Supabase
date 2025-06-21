@@ -3,8 +3,13 @@ name: Android CI
 on:
   push:
     branches: [ "main" ]
+    paths-ignore:
+      - '**.md'
+      - '.github/workflows/**'
+      - 'tv-stable.json'
   pull_request:
     branches: [ "main" ]
+  workflow_dispatch:  # 添加手动触发选项
 
 jobs:
   build:
@@ -15,7 +20,8 @@ jobs:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
 
     steps:
-    - uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
     
     - name: Set up JDK 17
       uses: actions/setup-java@v4

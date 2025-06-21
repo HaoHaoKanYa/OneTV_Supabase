@@ -3,18 +3,25 @@ name: Update Release JSON
 on:
   release:
     types: [published]  # 当新的Release被发布时触发
+  workflow_run:
+    workflows: ["Release"]
+    types:
+      - completed
+    branches:
+      - main
   workflow_dispatch:  # 添加手动触发选项
 
 jobs:
   update-json:
     runs-on: ubuntu-latest
+    # 只有当 Release 工作流成功完成时才运行，或者是手动触发或发布触发
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' || github.event_name == 'release' }}
     permissions:
       contents: write  # 需要写入权限来更新文件
-    env:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
         with:
           ref: main  # 确保检出main分支
       
@@ -22,47 +29,67 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '18'
-          cache: 'npm'
       
-      - name: Get release details
+      - name: Get latest release info
         id: release
         run: |
-          echo "tag_name=${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
-          echo "release_url=${{ github.event.release.html_url }}" >> $GITHUB_OUTPUT
+          # 获取最新的发布版本
+          LATEST_RELEASE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/latest")
+          
+          TAG_NAME=$(echo "$LATEST_RELEASE" | jq -r '.tag_name')
+          RELEASE_URL=$(echo "$LATEST_RELEASE" | jq -r '.html_url')
+          RELEASE_BODY=$(echo "$LATEST_RELEASE" | jq -r '.body')
+          
+          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+          echo "release_url=$RELEASE_URL" >> $GITHUB_OUTPUT
           
           # 获取发布日期
           RELEASE_DATE=$(date +"%Y-%m-%d")
           echo "release_date=$RELEASE_DATE" >> $GITHUB_OUTPUT
           
           # 提取版本号（移除'v'前缀）
-          VERSION=$(echo "${{ github.event.release.tag_name }}" | sed 's/^v//')
+          VERSION=$(echo "$TAG_NAME" | sed 's/^v//')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
+          
+          # 将发布说明保存到文件
+          echo "$RELEASE_BODY" > release_body.txt
+          
+          echo "获取到的版本: $VERSION"
+          echo "发布URL: $RELEASE_URL"
       
       - name: Get APK download URL
         id: apk_url
         run: |
           # 使用GitHub API获取最新发布的资源列表
-          assets_url="${{ github.event.release.assets_url }}"
-          assets_json=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" "$assets_url")
+          LATEST_RELEASE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/latest")
+          
+          ASSETS_URL=$(echo "$LATEST_RELEASE" | jq -r '.assets_url')
+          ASSETS_JSON=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" "$ASSETS_URL")
           
           # 提取APK下载链接 (取第一个APK文件)
-          APK_URL=$(echo "$assets_json" | jq -r '.[] | select(.name | endswith(".apk")) | .browser_download_url' | head -n 1)
+          APK_URL=$(echo "$ASSETS_JSON" | jq -r '.[] | select(.name | endswith(".apk")) | .browser_download_url' | head -n 1)
           
           # 如果找不到APK，使用默认链接
           if [ -z "$APK_URL" ]; then
-            APK_URL="${{ github.event.release.html_url }}"
+            APK_URL=$(echo "$LATEST_RELEASE" | jq -r '.html_url')
           fi
           
           echo "apk_url=$APK_URL" >> $GITHUB_OUTPUT
+          echo "获取到的APK下载链接: $APK_URL"
       
       - name: Update tv-stable.json
         run: |
-          # 创建新的tv-stable.json文件，适配现有项目的更新逻辑
+          # 读取发布说明
+          DESCRIPTION=$(cat release_body.txt)
+          
+          # 创建新的tv-stable.json文件
           cat << EOF > tv-stable.json
           {
             "version": "${{ steps.release.outputs.version }}",
             "downloadUrl": "${{ steps.apk_url.outputs.apk_url }}",
-            "description": "${{ github.event.release.body }}"
+            "description": "$DESCRIPTION"
           }
           EOF
           
