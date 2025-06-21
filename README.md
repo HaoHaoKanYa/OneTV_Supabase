@@ -26,12 +26,6 @@ OneTV是一款基于Android TV的全新流媒体应用，使用Su云作为后端
 
 
 
-```
-见应用内
-```
-
-## 📄 相关文档
-
 - [更新日志](CHANGELOG.md)
 - 更新说明
 - [应用配置说明](README_app_configs.md)
