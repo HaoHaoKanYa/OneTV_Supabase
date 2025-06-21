@@ -157,6 +157,8 @@ onetv_error.log
 .gradle/
 .idea/
 /py/
+RELEASE_GUIDE.md
+GIT_GUIDE.md
 
 # 激活码文件
 activation_codes_*.txt
