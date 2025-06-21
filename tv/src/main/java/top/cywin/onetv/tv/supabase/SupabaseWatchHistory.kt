@@ -92,60 +92,124 @@ fun SupabaseWatchHistory(
     var isTimeRangeMenuExpanded by remember { mutableStateOf(false) }
     var isSortOptionMenuExpanded by remember { mutableStateOf(false) }
     
+    // 添加一个刷新触发器
+    var refreshTrigger by remember { mutableStateOf(0) }
+    
     // 时间范围选项
     val timeRangeOptions = listOf("全部", "今天", "本周", "本月", "今年")
     val sortOptions = listOf("时间", "频道名", "观看时长")
     
     // 初始化会话管理器
     LaunchedEffect(Unit) {
+        Log.d("SupabaseWatchHistory", "初始化观看历史会话管理器")
         SupabaseWatchHistorySessionManager.initialize(context)
+        
+        // 初始化后立即刷新一次数据
+        refreshTrigger += 1
     }
     
     // 加载第一页观看历史
-    LaunchedEffect(userData, timeRangeFilter, sortOption) {
+    LaunchedEffect(userData, timeRangeFilter, sortOption, refreshTrigger) {
         if (userData != null && !isLoading) {
             isHistoryLoading = true
             errorMessage = null
             currentPage = 1 // 重置为第一页
             
+            Log.d("SupabaseWatchHistory", "===== 开始加载观看历史 =====")
+            Log.d("SupabaseWatchHistory", "用户ID: ${userData.userid}, 时间范围=$timeRangeFilter, 排序=$sortOption, 刷新触发器=$refreshTrigger")
+            
             try {
-                Log.d("SupabaseWatchHistory", "开始加载观看历史: 时间范围=$timeRangeFilter, 排序=$sortOption")
                 // 从本地会话管理器获取观看历史数据
                 val (history, stats, pagination) = SupabaseWatchHistorySessionManager.getWatchHistory(
                     timeRange = timeRangeFilter,
                     sortBy = sortOption,
-                    page = currentPage
+                    page = currentPage,
+                    pageSize = 50 // 增加每页加载数量，确保能显示更多数据
                 )
                 
                 Log.d("SupabaseWatchHistory", "加载结果: ${history.size}条记录, 统计: 总时长=${stats.totalWatchTime}, 频道数=${stats.totalChannels}")
                 
+                // 记录前几条记录的详情
+                history.take(5).forEachIndexed { index, item ->
+                    Log.d("SupabaseWatchHistory", "加载的记录 #${index+1}: ID=${item.id}, 频道=${item.channelName}, 时长=${item.duration}秒, 开始=${item.watchStart}")
+                }
+                
+                // 更新UI数据
                 watchHistoryItems.clear()
                 watchHistoryItems.addAll(history)
                 watchStatistics.value = stats
+                
+                Log.d("SupabaseWatchHistory", "已更新UI数据，记录数: ${watchHistoryItems.size}")
                 
                 // 更新分页信息
                 totalPages = pagination.totalPages
                 hasMoreData = currentPage < totalPages
                 
-                // 如果本地数据为空，尝试从服务器同步
-                if (history.isEmpty()) {
-                    Log.d("SupabaseWatchHistory", "本地无数据，尝试从服务器同步")
+                // 如果本地数据为空或者数据很少，尝试从服务器同步
+                if ((history.isEmpty() || history.size < 5) && refreshTrigger == 0) {
+                    // 只在首次加载时自动同步，避免重复同步
+                    Log.d("SupabaseWatchHistory", "本地数据为空或很少，尝试从服务器同步")
+                    isSyncing = true
                     val syncSuccess = SupabaseWatchHistorySessionManager.syncFromServer(context)
+                    isSyncing = false
+                    
                     if (syncSuccess) {
                         Log.d("SupabaseWatchHistory", "服务器同步成功，重新加载数据")
-                        // 重新加载数据
+                        // 重新加载数据，先尝试当前筛选条件
                         val (syncedHistory, syncedStats, syncedPagination) = SupabaseWatchHistorySessionManager.getWatchHistory(
                             timeRange = timeRangeFilter,
                             sortBy = sortOption,
-                            page = currentPage
+                            page = currentPage,
+                            pageSize = 50
                         )
                         
-                        watchHistoryItems.clear()
-                        watchHistoryItems.addAll(syncedHistory)
-                        watchStatistics.value = syncedStats
+                        Log.d("SupabaseWatchHistory", "同步后重新加载结果: ${syncedHistory.size}条记录")
                         
-                        totalPages = syncedPagination.totalPages
-                        hasMoreData = currentPage < syncedPagination.totalPages
+                        // 记录同步后加载的记录详情
+                        syncedHistory.take(5).forEachIndexed { index, item ->
+                            Log.d("SupabaseWatchHistory", "同步后的记录 #${index+1}: ID=${item.id}, 频道=${item.channelName}, 时长=${item.duration}秒, 开始=${item.watchStart}")
+                        }
+                        
+                        if (syncedHistory.isNotEmpty()) {
+                            Log.d("SupabaseWatchHistory", "同步后加载到 ${syncedHistory.size} 条记录")
+                            
+                            watchHistoryItems.clear()
+                            watchHistoryItems.addAll(syncedHistory)
+                            watchStatistics.value = syncedStats
+                            
+                            totalPages = syncedPagination.totalPages
+                            hasMoreData = currentPage < syncedPagination.totalPages
+                            
+                            Log.d("SupabaseWatchHistory", "已更新UI数据，同步后记录数: ${watchHistoryItems.size}")
+                        } else {
+                            // 如果当前筛选条件下没有数据，尝试加载全部数据
+                            Log.d("SupabaseWatchHistory", "当前筛选条件下无数据，尝试加载全部数据")
+                            val (allHistory, allStats, allPagination) = SupabaseWatchHistorySessionManager.getWatchHistory(
+                                timeRange = "全部",
+                                sortBy = sortOption,
+                                page = currentPage,
+                                pageSize = 50
+                            )
+                            
+                            if (allHistory.isNotEmpty()) {
+                                Log.d("SupabaseWatchHistory", "加载全部数据: ${allHistory.size}条记录")
+                                // 如果有数据，切换到"全部"筛选
+                                timeRangeFilter = "全部"
+                                
+                                watchHistoryItems.clear()
+                                watchHistoryItems.addAll(allHistory)
+                                watchStatistics.value = allStats
+                                
+                                totalPages = allPagination.totalPages
+                                hasMoreData = currentPage < allPagination.totalPages
+                                
+                                Log.d("SupabaseWatchHistory", "已更新UI数据，切换到全部后记录数: ${watchHistoryItems.size}")
+                            } else {
+                                Log.d("SupabaseWatchHistory", "同步后仍无数据")
+                            }
+                        }
+                    } else {
+                        Log.d("SupabaseWatchHistory", "服务器同步失败")
                     }
                 }
             } catch (e: Exception) {
@@ -153,9 +217,11 @@ fun SupabaseWatchHistory(
                 errorMessage = "加载观看历史失败: ${e.message}"
             } finally {
                 isHistoryLoading = false
+                Log.d("SupabaseWatchHistory", "===== 加载观看历史完成 =====")
             }
         } else {
             isHistoryLoading = false
+            Log.d("SupabaseWatchHistory", "跳过加载: 用户数据为空或正在加载中")
         }
     }
     
@@ -257,31 +323,7 @@ fun SupabaseWatchHistory(
                     Button(
                         onClick = {
                             // 重试加载
-                            errorMessage = null
-                            isHistoryLoading = true
-                            scope.launch {
-                                try {
-                                    val (history, stats, pagination) = SupabaseWatchHistorySessionManager.getWatchHistory(
-                                        timeRange = timeRangeFilter,
-                                        sortBy = sortOption,
-                                        page = 1
-                                    )
-                                    
-                                    watchHistoryItems.clear()
-                                    watchHistoryItems.addAll(history)
-                                    watchStatistics.value = stats
-                                    
-                                    // 更新分页信息
-                                    currentPage = 1
-                                    totalPages = pagination.totalPages
-                                    hasMoreData = currentPage < pagination.totalPages
-                                } catch (e: Exception) {
-                                    Log.e("SupabaseWatchHistory", "重试加载观看历史失败", e)
-                                    errorMessage = "重试加载失败: ${e.message}"
-                                } finally {
-                                    isHistoryLoading = false
-                                }
-                            }
+                            refreshTrigger += 1 // 增加刷新触发器的值
                         },
                         colors = ButtonDefaults.buttonColors(
                             containerColor = Color(0xFF2C3E50)
@@ -316,30 +358,7 @@ fun SupabaseWatchHistory(
                                 onClick = { 
                                     timeRangeFilter = option
                                     // 重新加载数据
-                                    isHistoryLoading = true
-                                    currentPage = 1
-                                    scope.launch {
-                                        try {
-                                            val (history, stats, pagination) = SupabaseWatchHistorySessionManager.getWatchHistory(
-                                                timeRange = timeRangeFilter,
-                                                sortBy = sortOption,
-                                                page = currentPage
-                                            )
-                                            
-                                            watchHistoryItems.clear()
-                                            watchHistoryItems.addAll(history)
-                                            watchStatistics.value = stats
-                                            
-                                            // 更新分页信息
-                                            totalPages = pagination.totalPages
-                                            hasMoreData = currentPage < totalPages
-                                        } catch (e: Exception) {
-                                            Log.e("SupabaseWatchHistory", "加载观看历史失败", e)
-                                            errorMessage = "加载观看历史失败: ${e.message}"
-                                        } finally {
-                                            isHistoryLoading = false
-                                        }
-                                    }
+                                    refreshTrigger += 1 // 增加刷新触发器的值
                                 },
                                 label = option,
                                 modifier = Modifier.fillMaxWidth()
@@ -361,30 +380,7 @@ fun SupabaseWatchHistory(
                                 onClick = { 
                                     sortOption = option
                                     // 重新加载数据
-                                    isHistoryLoading = true
-                                    currentPage = 1
-                                    scope.launch {
-                                        try {
-                                            val (history, stats, pagination) = SupabaseWatchHistorySessionManager.getWatchHistory(
-                                                timeRange = timeRangeFilter,
-                                                sortBy = sortOption,
-                                                page = currentPage
-                                            )
-                                            
-                                            watchHistoryItems.clear()
-                                            watchHistoryItems.addAll(history)
-                                            watchStatistics.value = stats
-                                            
-                                            // 更新分页信息
-                                            totalPages = pagination.totalPages
-                                            hasMoreData = currentPage < totalPages
-                                        } catch (e: Exception) {
-                                            Log.e("SupabaseWatchHistory", "加载观看历史失败", e)
-                                            errorMessage = "加载观看历史失败: ${e.message}"
-                                        } finally {
-                                            isHistoryLoading = false
-                                        }
-                                    }
+                                    refreshTrigger += 1 // 增加刷新触发器的值
                                 },
                                 label = option,
                                 modifier = Modifier.fillMaxWidth()
@@ -397,7 +393,10 @@ fun SupabaseWatchHistory(
                         context = context,
                         isSyncing = isSyncing,
                         onSyncStart = { isSyncing = true },
-                        onSyncComplete = { isSyncing = false },
+                        onSyncComplete = { 
+                            isSyncing = false 
+                            refreshTrigger += 1 // 增加刷新触发器的值，触发重新加载
+                        },
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
@@ -466,6 +465,14 @@ fun SupabaseWatchHistory(
                                 .fillMaxWidth()
                                 .weight(1f)
                         ) {
+                            // 添加调试日志，记录即将渲染的项目数量
+                            Log.d("SupabaseWatchHistory", "准备渲染历史记录列表，项目数量: ${watchHistoryItems.size}")
+                            
+                            // 记录前几条记录的详情
+                            watchHistoryItems.take(5).forEachIndexed { index, item ->
+                                Log.d("SupabaseWatchHistory", "渲染项目 #${index+1}: ID=${item.id}, 频道=${item.channelName}, 时长=${item.duration}秒, 开始=${item.watchStart}")
+                            }
+                            
                             items(watchHistoryItems) { item ->
                                 WatchHistoryItemView(item)
                             }
@@ -1087,19 +1094,50 @@ fun SyncWatchHistoryButton(
                     
                     try {
                         Log.d("SupabaseWatchHistory", "开始从服务器同步观看历史")
+                        
+                        // 同步前检查本地数据状态
+                        val (beforeHistory, _, _) = SupabaseWatchHistorySessionManager.getWatchHistory(
+                            timeRange = "全部",
+                            sortBy = "时间",
+                            page = 1,
+                            pageSize = 10
+                        )
+                        Log.d("SupabaseWatchHistory", "同步前本地数据: ${beforeHistory.size}条记录")
+                        
                         // 从服务器同步数据
                         val success = SupabaseWatchHistorySessionManager.syncFromServer(context)
                         
-                        resultMessage = if (success) {
-                            "成功从服务器同步观看历史"
+                        if (success) {
+                            resultMessage = "成功从服务器同步观看历史"
+                            Log.d("SupabaseWatchHistory", "同步成功，检查同步后数据状态")
+                            
+                            // 同步后检查本地数据状态
+                            val (afterHistory, _, _) = SupabaseWatchHistorySessionManager.getWatchHistory(
+                                timeRange = "全部",
+                                sortBy = "时间",
+                                page = 1,
+                                pageSize = 10
+                            )
+                            Log.d("SupabaseWatchHistory", "同步后本地数据: ${afterHistory.size}条记录")
+                            
+                            // 记录前几条记录的详情
+                            afterHistory.take(5).forEachIndexed { index, item ->
+                                Log.d("SupabaseWatchHistory", "同步后记录 #${index+1}: ID=${item.id}, 频道=${item.channelName}, 时长=${item.duration}秒, 开始=${item.watchStart}")
+                            }
+                            
+                            // 同步完成后，延迟一小段时间再通知UI刷新
+                            // 这样可以确保数据已经完全处理好
+                            delay(500)
+                            Log.d("SupabaseWatchHistory", "通知UI刷新")
+                            onSyncComplete()
                         } else {
-                            "同步观看历史失败"
+                            resultMessage = "同步观看历史失败"
+                            Log.d("SupabaseWatchHistory", "同步失败")
+                            onSyncComplete()
                         }
-                        Log.d("SupabaseWatchHistory", resultMessage ?: "同步完成")
                     } catch (e: Exception) {
                         Log.e("SupabaseWatchHistory", "同步过程中出错", e)
                         resultMessage = "同步出错: ${e.message}"
-                    } finally {
                         onSyncComplete()
                     }
                     
@@ -1139,10 +1177,14 @@ fun SyncWatchHistoryButton(
                         SupabaseWatchHistorySessionManager.clearLocalHistory(context)
                         resultMessage = "已清空本地观看历史"
                         Log.d("SupabaseWatchHistory", "已清空本地观看历史")
+                        
+                        // 给界面一点时间刷新
+                        delay(500)
+                        Log.d("SupabaseWatchHistory", "通知UI刷新")
+                        onSyncComplete()
                     } catch (e: Exception) {
                         Log.e("SupabaseWatchHistory", "清空本地数据出错", e)
                         resultMessage = "清空数据出错: ${e.message}"
-                    } finally {
                         onSyncComplete()
                     }
                     

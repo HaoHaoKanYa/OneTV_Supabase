@@ -327,12 +327,20 @@ object SupabaseWatchHistorySessionManager {
     ): Triple<List<WatchHistoryItem>, WatchStatistics, PaginationData> {
         Log.d(TAG, "获取观看历史: 时间范围=$timeRange, 排序=$sortBy, 页码=$page, 每页=$pageSize")
         
+        // 检查初始数据
+        Log.d(TAG, "初始数据条数: ${watchHistoryItems.size}")
+        if (watchHistoryItems.isNotEmpty()) {
+            val sample = watchHistoryItems.first()
+            Log.d(TAG, "数据样本: ID=${sample.id}, 频道=${sample.channelName}, 时长=${sample.duration}秒, 开始=${sample.watchStart}")
+        }
+        
         // 应用时间筛选
         val filteredItems = filterByTimeRange(watchHistoryItems, timeRange)
         Log.d(TAG, "时间筛选后记录数: ${filteredItems.size}")
         
         // 应用排序
         val sortedItems = sortItems(filteredItems, sortBy)
+        Log.d(TAG, "排序后记录数: ${sortedItems.size}")
         
         // 应用分页
         val totalItems = sortedItems.size
@@ -344,6 +352,14 @@ object SupabaseWatchHistorySessionManager {
             sortedItems.subList(startIndex, endIndex)
         } else {
             emptyList()
+        }
+        
+        // 记录分页后的结果
+        Log.d(TAG, "分页后记录数: ${pagedItems.size}, 起始索引=$startIndex, 结束索引=$endIndex")
+        
+        // 记录前几条记录的详情
+        pagedItems.take(5).forEachIndexed { index, item ->
+            Log.d(TAG, "返回记录 #${index+1}: ID=${item.id}, 频道=${item.channelName}, 时长=${item.duration}秒, 开始=${item.watchStart}")
         }
         
         // 计算分页数据
@@ -363,7 +379,10 @@ object SupabaseWatchHistorySessionManager {
      * 根据时间范围筛选观看历史
      */
     private fun filterByTimeRange(items: List<WatchHistoryItem>, timeRange: String): List<WatchHistoryItem> {
-        if (timeRange == "全部") return items
+        if (timeRange == "全部") {
+            Log.d(TAG, "时间范围为'全部'，返回所有 ${items.size} 条记录")
+            return items
+        }
         
         Log.d(TAG, "按时间范围筛选: $timeRange, 原始记录数: ${items.size}")
         
@@ -400,14 +419,30 @@ object SupabaseWatchHistorySessionManager {
                 calendar.set(java.util.Calendar.SECOND, 0)
                 calendar.time
             }
-            else -> return items
+            else -> {
+                Log.d(TAG, "未知的时间范围: $timeRange，返回所有记录")
+                return items
+            }
         }
         
-        Log.d(TAG, "时间范围筛选: 范围=$timeRange, 起始时间=${formatDateTime(startTime)}")
+        Log.d(TAG, "时间范围筛选: 范围=$timeRange, 起始时间=${formatDateTime(startTime)}, 时间戳=${startTime.time}")
+        
+        // 记录前几条记录的日期解析结果
+        items.take(5).forEachIndexed { index, item ->
+            try {
+                val itemDate = parseDateTime(item.watchStart)
+                val isAfter = itemDate.after(startTime)
+                Log.d(TAG, "记录 #${index+1} 日期比较: ${item.watchStart} -> ${itemDate.time}, 是否在范围内: $isAfter")
+            } catch (e: Exception) {
+                Log.e(TAG, "记录 #${index+1} 日期比较失败: ${item.watchStart}", e)
+            }
+        }
         
         val filteredItems = items.filter { 
             try {
-                parseDateTime(it.watchStart).after(startTime)
+                val itemDate = parseDateTime(it.watchStart)
+                val isAfter = itemDate.after(startTime)
+                isAfter
             } catch (e: Exception) {
                 Log.e(TAG, "解析日期失败: ${it.watchStart}", e)
                 false
@@ -674,8 +709,8 @@ object SupabaseWatchHistorySessionManager {
             Log.d(TAG, "请求服务器观看历史数据, 用户ID: $currentUserId")
             val response = apiClient.getWatchHistory(
                 page = 1,
-                pageSize = 100, // 获取较多数据
-                timeRange = "all",
+                pageSize = 200, // 获取更多数据，确保能获取到所有历史记录
+                timeRange = "all", // 获取所有时间范围的数据
                 sortBy = "watch_start",
                 sortOrder = "desc"
             )
@@ -706,7 +741,7 @@ object SupabaseWatchHistorySessionManager {
                         val watchEnd = item["watch_end"]?.let { (it as? JsonPrimitive)?.content }
                         val duration = item["duration"]?.let { (it as? JsonPrimitive)?.content?.toLongOrNull() } ?: 0
                         
-                        Log.d(TAG, "解析服务器记录: ID=$id, 频道=$channelName, 时长=$duration 秒")
+                        Log.d(TAG, "解析服务器记录: ID=$id, 频道=$channelName, 时长=$duration 秒, 开始时间=$watchStart")
                         
                         if (id.isBlank() || channelName.isBlank() || duration <= 0) {
                             Log.w(TAG, "跳过无效记录: ID=$id, 频道=$channelName, 时长=$duration")
@@ -733,19 +768,42 @@ object SupabaseWatchHistorySessionManager {
                 
                 // 合并本地和服务器数据
                 val localIds = watchHistoryItems.map { it.id }.toSet()
-                val newItems = serverItems.filter { server -> 
+                
+                // 找出服务器上有但本地没有的记录
+                val newServerItems = serverItems.filter { server -> 
                     !localIds.contains(server.id) 
                 }
                 
-                Log.d(TAG, "过滤出新记录: ${newItems.size}条")
+                // 找出本地有但可能未同步到服务器的记录（通常是UUID格式的ID，包含"-"）
+                val pendingLocalItems = watchHistoryItems.filter { it.id.contains("-") }
                 
-                if (newItems.isNotEmpty()) {
-                    watchHistoryItems.addAll(newItems)
+                Log.d(TAG, "本地记录数: ${watchHistoryItems.size}, 服务器新记录数: ${newServerItems.size}, 本地待同步记录数: ${pendingLocalItems.size}")
+                
+                if (newServerItems.isNotEmpty()) {
+                    // 添加服务器上的新记录到本地
+                    watchHistoryItems.addAll(newServerItems)
+                    Log.d(TAG, "已添加 ${newServerItems.size} 条服务器新记录到本地")
+                    
+                    // 更新统计数据
                     updateStatistics()
+                    
+                    // 保存到本地
                     saveToLocal(context)
-                    Log.d(TAG, "从服务器同步了 ${newItems.size} 条新的观看记录")
+                    Log.d(TAG, "已保存合并后的数据到本地存储")
+                    
+                    // 记录前几条数据的详细信息
+                    newServerItems.take(5).forEachIndexed { index, item ->
+                        Log.d(TAG, "新增服务器记录 #${index+1}: ID=${item.id}, 频道=${item.channelName}, 时长=${item.duration}秒, 开始=${item.watchStart}")
+                    }
                 } else {
-                    Log.d(TAG, "没有新的记录需要合并")
+                    Log.d(TAG, "服务器没有新记录需要合并")
+                }
+                
+                // 如果有本地待同步记录，尝试同步到服务器
+                if (pendingLocalItems.isNotEmpty()) {
+                    Log.d(TAG, "尝试将 ${pendingLocalItems.size} 条本地记录同步到服务器")
+                    val syncCount = syncToServer(context)
+                    Log.d(TAG, "成功同步 $syncCount 条记录到服务器")
                 }
                 
                 return@withContext true
@@ -775,9 +833,27 @@ object SupabaseWatchHistorySessionManager {
     private fun parseDateTime(dateTimeStr: String): Date {
         return try {
             val format = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault())
-            format.parse(dateTimeStr) ?: Date()
+            val parsedDate = format.parse(dateTimeStr)
+            if (parsedDate != null) {
+                Log.d(TAG, "成功解析日期: $dateTimeStr -> ${parsedDate.time}")
+                parsedDate
+            } else {
+                Log.e(TAG, "日期解析为null: $dateTimeStr")
+                Date()
+            }
         } catch (e: Exception) {
             Log.e(TAG, "解析日期时间失败: $dateTimeStr", e)
+            // 尝试其他格式
+            try {
+                val altFormat = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.getDefault())
+                val parsedDate = altFormat.parse(dateTimeStr)
+                if (parsedDate != null) {
+                    Log.d(TAG, "使用备用格式成功解析日期: $dateTimeStr -> ${parsedDate.time}")
+                    return parsedDate
+                }
+            } catch (e2: Exception) {
+                Log.e(TAG, "备用格式解析也失败: $dateTimeStr", e2)
+            }
             Date()
         }
     }
