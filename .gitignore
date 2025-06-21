@@ -86,6 +86,7 @@ USER_RULES.md
 # 明确列出要排除的properties文件，而不是使用通配符
 local.properties
 keystore.properties
+key.properties
 supabase_config.properties
 secrets.properties
 application.properties
