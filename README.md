@@ -29,8 +29,6 @@
 
 
 
-### 前端技术栈
-
 - **UI 框架**：Jetpack Compose，实现声明式 UI 和动画效果
 - **架构模式**：MVVM + Clean Architecture，提高代码可维护性
 - **状态管理**：Kotlin Flow + StateFlow，响应式编程
