@@ -29,17 +29,6 @@
 
 
 
-- **UI 框架**：Jetpack Compose，实现声明式 UI 和动画效果
-- **架构模式**：MVVM + Clean Architecture，提高代码可维护性
-- **状态管理**：Kotlin Flow + StateFlow，响应式编程
-- **依赖注入**：Koin，轻量级 DI 框架
-- **网络请求**：Ktor Client，支持协程和多平台
-- **图片加载**：Coil，高效的图片加载和缓存
-- **视频播放**：ExoPlayer，支持多种格式和高级播放功能
-- **本地存储**：DataStore + Room，高效的数据持久化
-
-### 后端技术栈 (Supabase)
-
 - **认证系统**：Supabase Auth，支持多种登录方式和安全认证
 - **数据存储**：PostgreSQL 数据库，强大的关系型数据存储
 - **实时更新**：Realtime API，提供数据实时同步
