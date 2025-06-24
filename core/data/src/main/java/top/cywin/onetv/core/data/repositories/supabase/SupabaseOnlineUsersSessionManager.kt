@@ -4,6 +4,7 @@ package top.cywin.onetv.core.data.repositories.supabase
 import android.content.Context
 import android.util.Log
 import androidx.core.content.edit
+import com.google.gson.Gson
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -180,6 +181,7 @@ class SupabaseOnlineUsersSessionManager private constructor(context: Context) {
      * 保存本地缓存
      */
     private fun saveLocalCache(data: SupabaseOnlineUsersData) {
+        // 1. 保存传统JSON格式
         prefs.edit {
             putString(ONLINE_USERS_KEY,
                 JSONObject().apply {
@@ -192,6 +194,39 @@ class SupabaseOnlineUsersSessionManager private constructor(context: Context) {
             )
             apply()
         }
+        
+        // 2. 保存到缓存
+        try {
+            // 获取应用上下文
+            val appContext = SupabaseClient.getAppContext()
+            if (appContext != null) {
+                // 使用scope.launch确保在IO线程执行
+                scope.launch(Dispatchers.IO) {
+                    try {
+                        // 现在我们可以直接导入SupabaseCacheManager和SupabaseCacheKey
+                        // 然后就直接调用saveCache方法，不需要反射
+                        Log.d(TAG, "[统一缓存] 在线用户数据同步中...")
+                        
+                        // 我们只保存传统JSON格式，不再尝试直接保存对象
+                        val gson = Gson()
+                        val jsonString = gson.toJson(data)
+                        
+                        // 将JSON字符串保存到ONLINE_USERS_RAW键
+                        prefs.edit {
+                            putString("ONLINE_USERS_RAW", jsonString)
+                            apply()
+                        }
+                        
+                        Log.d(TAG, "[统一缓存] 在线用户数据已保存")
+                    } catch (e: Exception) {
+                        Log.e(TAG, "[统一缓存] 保存失败: ${e.message}", e)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "[统一缓存] 初始化失败: ${e.message}", e)
+        }
+        
         Log.d(TAG, "[缓存更新] total=${data.total} base=${data.base} real=${data.real} updated=${data.updated}")
     }
 

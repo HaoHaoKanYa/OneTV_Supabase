@@ -48,6 +48,7 @@ import top.cywin.onetv.core.data.BuildConfig
 import top.cywin.onetv.core.data.repositories.supabase.SupabaseEnvChecker
 import top.cywin.onetv.tv.supabase.SupabaseVideoPlayerWatchHistoryTracker
 import top.cywin.onetv.tv.supabase.SupabaseWatchHistorySessionManager
+import top.cywin.onetv.tv.supabase.sync.SupabaseWatchHistorySyncService
 import top.cywin.onetv.tv.ui.App
 import top.cywin.onetv.tv.ui.screens.main.MainUiState
 import top.cywin.onetv.tv.ui.screens.main.MainViewModel
@@ -55,6 +56,11 @@ import top.cywin.onetv.tv.ui.screens.settings.SettingsViewModel
 import top.cywin.onetv.tv.ui.theme.MyTVTheme
 import top.cywin.onetv.tv.utlis.HttpServer
 import kotlin.system.exitProcess
+import android.content.Intent
+import androidx.lifecycle.lifecycleScope
+import top.cywin.onetv.core.data.repositories.supabase.SupabaseUserDataIptv
+import top.cywin.onetv.core.data.repositories.supabase.cache.SupabaseCacheKey
+import top.cywin.onetv.tv.supabase.SupabaseCacheManager
 
 class MainActivity : ComponentActivity() {
     private val TAG = "MainActivity"
@@ -120,6 +126,28 @@ class MainActivity : ComponentActivity() {
             
             Log.d(TAG, "开始HTTP服务器")
             HttpServer.start(applicationContext)
+
+            // 在应用启动时预热缓存
+            lifecycleScope.launch {
+                try {
+                    Log.d(TAG, "开始预热应用缓存...")
+                    SupabaseCacheManager.preheatCache(applicationContext)
+                    Log.d(TAG, "应用缓存预热完成")
+                    
+                    // 如果用户已登录，预热用户缓存
+                    val session = SupabaseCacheManager.getCache<String>(applicationContext, SupabaseCacheKey.SESSION)
+                    if (!session.isNullOrEmpty()) {
+                        val userData = SupabaseCacheManager.getCache<SupabaseUserDataIptv>(applicationContext, SupabaseCacheKey.USER_DATA)
+                        if (userData != null) {
+                            Log.d(TAG, "检测到已登录用户，开始预热用户缓存...")
+                            SupabaseCacheManager.preheatUserCache(applicationContext, userData.userid)
+                            Log.d(TAG, "用户缓存预热完成")
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "缓存预热失败", e)
+                }
+            }
         }
     }
     
@@ -143,7 +171,7 @@ class MainActivity : ComponentActivity() {
             try {
                 Log.d(TAG, "正在同步观看历史到服务器...")
                 val startTime = System.currentTimeMillis()
-                val count = SupabaseWatchHistorySessionManager.syncToServer(applicationContext)
+                val count = SupabaseWatchHistorySyncService.syncToServer(applicationContext)
                 val endTime = System.currentTimeMillis()
                 Log.d(TAG, "成功同步 $count 条观看记录, 耗时 ${endTime - startTime}ms")
                 
@@ -181,7 +209,7 @@ class MainActivity : ComponentActivity() {
         appScope.launch {
             try {
                 Log.d(TAG, "onDestroy 中同步观看历史")
-                val count = SupabaseWatchHistorySessionManager.syncToServer(applicationContext)
+                val count = SupabaseWatchHistorySyncService.syncToServer(applicationContext)
                 Log.d(TAG, "onDestroy 中成功同步 $count 条观看记录")
             } catch (e: Exception) {
                 Log.e(TAG, "应用销毁时同步观看历史失败", e)

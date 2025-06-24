@@ -2,7 +2,6 @@ package top.cywin.onetv.tv.supabase
 
 import android.annotation.SuppressLint
 import android.content.Context
-import android.content.SharedPreferences
 import android.util.Log
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
@@ -15,9 +14,13 @@ import top.cywin.onetv.core.data.repositories.supabase.SupabaseApiClient
 import top.cywin.onetv.core.data.repositories.supabase.SupabaseClient
 import top.cywin.onetv.core.data.repositories.supabase.SupabaseSessionManager
 import top.cywin.onetv.core.data.repositories.supabase.SupabaseUserDataIptv
+import top.cywin.onetv.core.data.repositories.supabase.cache.SupabaseCacheKey
+import top.cywin.onetv.tv.supabase.sync.SupabaseWatchHistorySyncService
 import java.util.Date
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.UUID
+import java.text.SimpleDateFormat
+import java.util.TimeZone
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonArray
@@ -25,17 +28,16 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.coroutines.runBlocking
 
 /**
  * 观看历史会话管理器
  * 负责在本地管理和缓存观看历史记录，并在适当的时候与服务器同步
+ * 完全使用统一缓存管理器实现存储
+ * 注意：服务器同步功能已移至专用模块 {@link SupabaseWatchHistorySyncService}
  */
 object SupabaseWatchHistorySessionManager {
     private const val TAG = "WatchHistoryManager"
-    private const val PREF_NAME = "watch_history_prefs"
-    private const val KEY_WATCH_HISTORY = "watch_history_data"
-    private const val KEY_LAST_SYNC = "last_sync_time"
-    private const val KEY_USER_ID = "user_id"
     
     // 本地缓存的观看历史数据
     private val watchHistoryItems = CopyOnWriteArrayList<WatchHistoryItem>()
@@ -63,39 +65,91 @@ object SupabaseWatchHistorySessionManager {
     fun initialize(context: Context) {
         Log.d(TAG, "初始化观看历史管理器")
         
+        try {
         // 获取当前用户ID
         val userId = try {
             // 使用SupabaseSessionManager获取用户ID
-            val userData = SupabaseSessionManager.getCachedUserData(context)
-            userData?.userid
+                runBlocking { 
+                    SupabaseSessionManager.getCachedUserData(context)?.userid
+                }
         } catch (e: Exception) {
             Log.e(TAG, "获取用户ID失败", e)
             null
         }
         
         Log.d(TAG, "当前用户ID: $userId")
-        
-        // 如果用户ID有变化，需要重新加载数据
-        val prefs = getPreferences(context)
-        val savedUserId = prefs.getString(KEY_USER_ID, null)
-        
-        if (userId != null) {
-            if (userId != savedUserId) {
-                Log.d(TAG, "用户ID变更: $savedUserId -> $userId, 重新加载数据")
-                // 保存新的用户ID
-                prefs.edit().putString(KEY_USER_ID, userId).apply()
-                currentUserId = userId
-            } else {
-                Log.d(TAG, "用户ID未变更: $userId")
-                currentUserId = userId
+            currentUserId = userId
+            
+            // 使用超时保护
+            val loadJob = runBlocking {
+                kotlinx.coroutines.withTimeoutOrNull(5000) { // 5秒超时
+                    try {
+                        loadFromLocalAsync(context)
+                        true
+                    } catch (e: Exception) {
+                        Log.e(TAG, "加载本地观看历史失败", e)
+                        watchHistoryItems.clear()
+                        false
+                    }
+                }
             }
-        } else {
-            Log.d(TAG, "未获取到用户ID，使用本地数据")
+            
+            if (loadJob == null) {
+                Log.e(TAG, "加载观看历史超时，已强制终止")
+                watchHistoryItems.clear()
+            }
+            
+            updateStatistics()
+            Log.d(TAG, "观看历史管理器初始化完成, 加载了 ${watchHistoryItems.size} 条记录")
+        } catch (e: Exception) {
+            Log.e(TAG, "观看历史管理器初始化失败", e)
+            watchHistoryItems.clear()
+            // 确保即使初始化失败，也不会影响应用运行
         }
+    }
+    
+    /**
+     * 初始化管理器，从本地存储加载数据（协程版本）
+     */
+    suspend fun initializeAsync(context: Context) = withContext(Dispatchers.IO) {
+        Log.d(TAG, "初始化观看历史管理器（协程版本）")
         
-        loadFromLocal(context)
+        try {
+            // 获取当前用户ID
+            val userId = try {
+                SupabaseSessionManager.getCachedUserData(context)?.userid
+            } catch (e: Exception) {
+                Log.e(TAG, "获取用户ID失败", e)
+                null
+            }
+            
+            Log.d(TAG, "当前用户ID: $userId")
+            currentUserId = userId
+            
+            // 使用超时保护
+            val loadSuccess = kotlinx.coroutines.withTimeoutOrNull(5000) { // 5秒超时
+                try {
+                    loadFromLocalAsync(context)
+                    true
+                } catch (e: Exception) {
+                    Log.e(TAG, "加载本地观看历史失败", e)
+                    watchHistoryItems.clear()
+                    false
+                }
+            }
+            
+            if (loadSuccess == null) {
+                Log.e(TAG, "加载观看历史超时，已强制终止")
+                watchHistoryItems.clear()
+            }
+            
         updateStatistics()
         Log.d(TAG, "观看历史管理器初始化完成, 加载了 ${watchHistoryItems.size} 条记录")
+        } catch (e: Exception) {
+            Log.e(TAG, "观看历史管理器初始化失败", e)
+            watchHistoryItems.clear()
+            // 确保即使初始化失败，也不会影响应用运行
+        }
     }
     
     /**
@@ -104,8 +158,49 @@ object SupabaseWatchHistorySessionManager {
     private fun loadFromLocal(context: Context) {
         try {
             Log.d(TAG, "从本地存储加载观看历史数据")
-            val prefs = getPreferences(context)
-            val historyJson = prefs.getString(KEY_WATCH_HISTORY, null)
+            
+            // 使用runBlocking调用协程版本
+            runBlocking {
+                loadFromLocalAsync(context)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "加载本地观看历史失败", e)
+            watchHistoryItems.clear()
+        }
+    }
+    
+    /**
+     * 从本地存储重新加载观看历史数据
+     * 供同步服务调用，用于更新内存中的数据
+     */
+    fun reloadFromLocal(context: Context) {
+        Log.d(TAG, "重新加载观看历史数据（同步服务请求）")
+        loadFromLocal(context)
+        updateStatistics()
+    }
+    
+    /**
+     * 从本地存储重新加载观看历史数据（协程版本）
+     * 供同步服务调用，用于更新内存中的数据
+     */
+    suspend fun reloadFromLocalAsync(context: Context) = withContext(Dispatchers.IO) {
+        Log.d(TAG, "重新加载观看历史数据（同步服务请求，协程版本）")
+        loadFromLocalAsync(context)
+        updateStatistics()
+    }
+    
+    /**
+     * 从本地存储加载观看历史数据（协程版本）
+     */
+    private suspend fun loadFromLocalAsync(context: Context) = withContext(Dispatchers.IO) {
+        try {
+            Log.d(TAG, "从本地存储加载观看历史数据（协程版本）")
+            
+            // 使用统一缓存管理器获取数据，指定类型为String
+            val historyJson = SupabaseCacheManager.getCache<String>(
+                context, 
+                SupabaseCacheKey.WATCH_HISTORY
+            )
             
             if (!historyJson.isNullOrBlank()) {
                 try {
@@ -138,16 +233,32 @@ object SupabaseWatchHistorySessionManager {
     private fun saveToLocal(context: Context) {
         try {
             Log.d(TAG, "保存观看历史数据到本地存储, 条数: ${watchHistoryItems.size}")
-            val prefs = getPreferences(context)
+            
+            // 使用runBlocking调用协程版本
+            runBlocking {
+                saveToLocalAsync(context)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "保存观看历史到本地失败", e)
+        }
+    }
+    
+    /**
+     * 保存观看历史数据到本地存储（协程版本）
+     */
+    private suspend fun saveToLocalAsync(context: Context) = withContext(Dispatchers.IO) {
+        try {
+            Log.d(TAG, "保存观看历史数据到本地存储（协程版本）, 条数: ${watchHistoryItems.size}")
             
             try {
                 val historyJson = json.encodeToString(watchHistoryItems.toList())
                 Log.d(TAG, "JSON序列化成功, 长度: ${historyJson.length}, 第一条记录ID: ${if (watchHistoryItems.isNotEmpty()) watchHistoryItems[0].id else "无"}")
                 
-                prefs.edit()
-                    .putString(KEY_WATCH_HISTORY, historyJson)
-                    .putLong(KEY_LAST_SYNC, System.currentTimeMillis())
-                    .apply()
+                // 使用统一缓存管理器保存数据
+                SupabaseCacheManager.saveCache(context, SupabaseCacheKey.WATCH_HISTORY, historyJson)
+                
+                // 保存最后同步时间
+                SupabaseCacheManager.saveCache(context, SupabaseCacheKey.WATCH_HISTORY_LAST_LOADED, System.currentTimeMillis())
                 
                 Log.d(TAG, "已保存 ${watchHistoryItems.size} 条观看历史记录到本地")
             } catch (e: Exception) {
@@ -159,23 +270,11 @@ object SupabaseWatchHistorySessionManager {
     }
     
     /**
-     * 获取SharedPreferences实例
-     * 使用用户ID作为文件名的一部分，确保不同用户的数据隔离
-     */
-    private fun getPreferences(context: Context): SharedPreferences {
-        val prefName = if (currentUserId != null) {
-            "${PREF_NAME}_${currentUserId}"
-        } else {
-            PREF_NAME
-        }
-        return context.getSharedPreferences(prefName, Context.MODE_PRIVATE)
-    }
-    
-    /**
      * 记录频道观看历史
      * @param channelName 频道名称
      * @param channelUrl 频道URL
      * @param duration 观看时长（秒）
+     * @param context 应用上下文
      */
     fun recordChannelWatch(channelName: String, channelUrl: String, duration: Long, context: Context) {
         Log.d(TAG, "开始记录频道观看历史: 频道=$channelName, URL=${channelUrl.take(50)}${if(channelUrl.length > 50) "..." else ""}, 时长=$duration 秒")
@@ -196,53 +295,143 @@ object SupabaseWatchHistorySessionManager {
             return
         }
         
-        // 如果当前用户ID为空，尝试重新获取
-        if (currentUserId == null) {
-            try {
-                val userData = SupabaseSessionManager.getCachedUserData(context)
-                currentUserId = userData?.userid
-                
-                // 如果获取到了用户ID，更新本地存储
-                if (currentUserId != null) {
-                    val prefs = getPreferences(context)
-                    prefs.edit().putString(KEY_USER_ID, currentUserId).apply()
-                    Log.d(TAG, "已更新用户ID: $currentUserId")
-                } else {
-                    Log.w(TAG, "无法获取用户ID，将使用匿名模式记录")
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "获取用户ID失败", e)
-            }
-        }
-        
+        // 创建观看历史项目
         val now = Date()
-        val startTime = Date(now.time - duration * 1000)
+        val watchStart = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US).apply {
+            timeZone = java.util.TimeZone.getTimeZone("UTC")
+        }.format(Date(now.time - duration * 1000))
+        
+        val watchEnd = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US).apply {
+            timeZone = java.util.TimeZone.getTimeZone("UTC")
+        }.format(now)
         
         val historyItem = WatchHistoryItem(
-            id = java.util.UUID.randomUUID().toString(),
+            id = UUID.randomUUID().toString(), // 使用UUID创建临时ID，服务器同步后会被替换
             channelName = channelName,
             channelUrl = channelUrl,
-            watchStart = formatDateTime(startTime),
-            watchEnd = formatDateTime(now),
-            duration = duration
+            duration = duration,
+            watchStart = watchStart,
+            watchEnd = watchEnd
         )
         
-        Log.d(TAG, "创建观看历史记录: ID=${historyItem.id}, 开始=${historyItem.watchStart}, 结束=${historyItem.watchEnd}, 时长=${historyItem.duration}秒, 用户ID=$currentUserId")
+        // 添加到本地列表
+        watchHistoryItems.add(0, historyItem) // 添加到列表开头，保持最新记录在前
+        Log.d(TAG, "添加新观看记录: ID=${historyItem.id}, 频道=${historyItem.channelName}, 时长=${historyItem.duration}秒")
         
-        // 添加到本地缓存
-        watchHistoryItems.add(0, historyItem) // 添加到列表开头
-        Log.d(TAG, "添加到本地缓存, 当前缓存记录数: ${watchHistoryItems.size}")
+        // 如果记录超过1000条，删除旧记录
+        if (watchHistoryItems.size > 1000) {
+            val removed = watchHistoryItems.removeAt(watchHistoryItems.size - 1)
+            Log.d(TAG, "记录超过1000条，删除最旧记录: ${removed.channelName}")
+        }
         
-        // 更新统计数据
-        updateStatistics()
+        // 标记有待同步的更改
+        hasPendingChanges = true
         
         // 保存到本地
         saveToLocal(context)
         
-        // 标记为有待同步的数据
+        // 更新统计数据
+        updateStatistics()
+        
+        Log.d(TAG, "观看记录已保存，当前总记录数: ${watchHistoryItems.size}")
+    }
+    
+    /**
+     * 记录频道观看历史（协程版本）
+     * @param channelName 频道名称
+     * @param channelUrl 频道URL
+     * @param duration 观看时长（秒）
+     * @param context 应用上下文
+     */
+    suspend fun recordChannelWatchAsync(
+        channelName: String, 
+        channelUrl: String, 
+        duration: Long, 
+        context: Context
+    ) = withContext(Dispatchers.IO) {
+        Log.d(TAG, "开始记录频道观看历史（协程版本）: 频道=$channelName, URL=${channelUrl.take(50)}${if(channelUrl.length > 50) "..." else ""}, 时长=$duration 秒")
+        
+        // 严格检查参数有效性
+        if (channelName.isBlank()) {
+            Log.e(TAG, "记录观看历史失败: 频道名为空")
+            return@withContext
+        }
+        
+        if (channelUrl.isBlank()) {
+            Log.e(TAG, "记录观看历史失败: URL为空")
+            return@withContext
+        }
+        
+        if (duration <= 0) {
+            Log.e(TAG, "记录观看历史失败: 无效时长 $duration")
+            return@withContext
+        }
+        
+        // 创建观看历史项目
+        val now = Date()
+        val watchStart = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US).apply {
+            timeZone = java.util.TimeZone.getTimeZone("UTC")
+        }.format(Date(now.time - duration * 1000))
+        
+        val watchEnd = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US).apply {
+            timeZone = java.util.TimeZone.getTimeZone("UTC")
+        }.format(now)
+        
+        val historyItem = WatchHistoryItem(
+            id = UUID.randomUUID().toString(), // 使用UUID创建临时ID，服务器同步后会被替换
+            channelName = channelName,
+            channelUrl = channelUrl,
+            duration = duration,
+            watchStart = watchStart,
+            watchEnd = watchEnd
+        )
+        
+        // 添加到本地列表
+        watchHistoryItems.add(0, historyItem) // 添加到列表开头，保持最新记录在前
+        Log.d(TAG, "添加新观看记录: ID=${historyItem.id}, 频道=${historyItem.channelName}, 时长=${historyItem.duration}秒")
+        
+        // 如果记录超过1000条，删除旧记录
+        if (watchHistoryItems.size > 1000) {
+            val removed = watchHistoryItems.removeAt(watchHistoryItems.size - 1)
+            Log.d(TAG, "记录超过1000条，删除最旧记录: ${removed.channelName}")
+        }
+        
+        // 标记有待同步的更改
         hasPendingChanges = true
         
-        Log.d(TAG, "完成记录观看历史: $channelName, 时长: $duration 秒, 待同步状态: $hasPendingChanges")
+        // 保存到本地
+        saveToLocalAsync(context)
+        
+        // 更新统计数据
+        updateStatistics()
+        
+        Log.d(TAG, "观看记录已保存，当前总记录数: ${watchHistoryItems.size}")
+    }
+    
+    /**
+     * 清除所有观看历史记录
+     */
+    fun clearHistory(context: Context) {
+        Log.d(TAG, "清除所有观看历史记录，当前记录数: ${watchHistoryItems.size}")
+        watchHistoryItems.clear()
+        saveToLocal(context)
+        updateStatistics()
+        Log.d(TAG, "所有观看历史记录已清除")
+    }
+    
+    /**
+     * 清除所有观看历史记录（协程版本）
+     */
+    suspend fun clearHistoryAsync(context: Context) = withContext(Dispatchers.IO) {
+        Log.d(TAG, "清除所有观看历史记录（协程版本），当前记录数: ${watchHistoryItems.size}")
+        watchHistoryItems.clear()
+        
+        // 清除缓存
+        SupabaseCacheManager.clearCache(context, SupabaseCacheKey.WATCH_HISTORY)
+        SupabaseCacheManager.clearCache(context, SupabaseCacheKey.WATCH_HISTORY_LAST_LOADED)
+        
+        updateStatistics()
+        Log.d(TAG, "所有观看历史记录已清除")
     }
     
     /**
@@ -519,343 +708,44 @@ object SupabaseWatchHistorySessionManager {
     }
     
     /**
-     * 将本地缓存的观看历史同步到服务器
-     * @return 同步成功的记录数
-     */
-    suspend fun syncToServer(context: Context): Int = withContext(Dispatchers.IO) {
-        Log.d(TAG, "开始同步观看历史到服务器, 待同步状态: $hasPendingChanges, 本地记录数: ${watchHistoryItems.size}")
-        
-        if (!hasPendingChanges) {
-            Log.d(TAG, "没有需要同步的数据, 跳过同步")
-            return@withContext 0
-        }
-        
-        if (watchHistoryItems.isEmpty()) {
-            Log.d(TAG, "本地记录为空, 跳过同步")
-            return@withContext 0
-        }
-        
-        if (currentUserId == null) {
-            Log.e(TAG, "同步失败: 未获取到用户ID")
-            return@withContext 0
-        }
-        
-        val apiClient = SupabaseApiClient()
-        var successCount = 0
-        
-        try {
-            // 复制一份列表，避免并发修改
-            val itemsToSync = ArrayList(watchHistoryItems)
-            Log.d(TAG, "待同步记录总数: ${itemsToSync.size}")
-            
-            // 筛选出本地生成的ID（包含-的UUID格式）的记录，这些是未同步的记录
-            val pendingItems = itemsToSync.filter { it.id.contains("-") }
-            Log.d(TAG, "筛选出未同步记录数: ${pendingItems.size}")
-            
-            if (pendingItems.isEmpty()) {
-                Log.d(TAG, "没有待同步的记录, 跳过同步")
-                return@withContext 0
-            }
-            
-            // 使用批量上传API
-            try {
-                // 准备批量上传数据
-                val records = pendingItems.map { item ->
-                    mapOf(
-                        "channelName" to item.channelName,
-                        "channelUrl" to item.channelUrl,
-                        "duration" to item.duration,
-                        "watchStart" to item.watchStart,
-                        "watchEnd" to item.watchEnd,
-                        "user_id" to currentUserId
-                    )
-                }
-                
-                Log.d(TAG, "准备批量上传 ${records.size} 条记录, 用户ID: $currentUserId")
-                
-                // 记录前几条记录的内容以便调试
-                records.take(3).forEachIndexed { index, record ->
-                    Log.d(TAG, "批量上传记录 #${index+1}: 频道=${record["channelName"]}, 时长=${record["duration"]}, 用户ID=${record["user_id"]}")
-                }
-                
-                val response = apiClient.batchRecordWatchHistory(records)
-                Log.d(TAG, "批量上传API响应: $response")
-                
-                // 解析响应
-                val jsonObject = response as? JsonObject
-                val success = jsonObject?.get("success")?.let {
-                    (it as? JsonPrimitive)?.content?.contains("true")
-                } ?: false
-                
-                val data = jsonObject?.get("data") as? JsonObject
-                val inserted = data?.get("inserted")?.let {
-                    (it as? JsonPrimitive)?.content?.toIntOrNull()
-                } ?: 0
-                
-                if (success && inserted > 0) {
-                    successCount = inserted
-                    Log.d(TAG, "成功批量同步了 $successCount 条观看记录到服务器")
-                    
-                    // 更新本地记录状态
-                    // 获取服务器返回的记录ID
-                    val serverRecords = data?.get("records") as? JsonArray
-                    if (serverRecords != null) {
-                        Log.d(TAG, "服务器返回了 ${serverRecords.size} 条记录")
-                        
-                        // 创建一个映射，用于更新本地记录的ID
-                        val updatedIds = mutableMapOf<String, String>()
-                        
-                        // 遍历服务器返回的记录，提取ID
-                        for (i in 0 until minOf(serverRecords.size, pendingItems.size)) {
-                            val serverRecord = serverRecords[i] as? JsonObject
-                            val serverId = serverRecord?.get("id")?.let {
-                                (it as? JsonPrimitive)?.content
-                            }
-                            if (serverId != null) {
-                                updatedIds[pendingItems[i].id] = serverId
-                                Log.d(TAG, "更新记录ID: ${pendingItems[i].id} -> $serverId")
-                            }
-                        }
-                        
-                        // 更新本地记录
-                        val updatedCount = watchHistoryItems.count { updatedIds.containsKey(it.id) }
-                        Log.d(TAG, "待更新本地ID数: $updatedCount")
-                        
-                        watchHistoryItems.replaceAll { item ->
-                            if (updatedIds.containsKey(item.id)) {
-                                Log.d(TAG, "更新记录ID: ${item.id} -> ${updatedIds[item.id]}")
-                                item.copy(id = updatedIds[item.id]!!)
-                            } else {
-                                item
-                            }
-                        }
-                        
-                        // 保存更新后的记录到本地
-                        saveToLocal(context)
-                    } else {
-                        Log.w(TAG, "服务器未返回记录数组")
-                    }
-                    
-                    hasPendingChanges = false
-                } else {
-                    val errorMsg = jsonObject?.get("error")?.let {
-                        (it as? JsonPrimitive)?.content
-                    } ?: "未知错误"
-                    Log.e(TAG, "批量同步失败: $errorMsg")
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "批量同步过程中发生异常", e)
-                
-                // 回退到单条记录同步
-                Log.d(TAG, "尝试单条记录同步...")
-                for (item in pendingItems) {
-                    try {
-                        Log.d(TAG, "单条同步: 频道=${item.channelName}, 时长=${item.duration}, 用户ID=$currentUserId")
-                        
-                        val response = apiClient.recordWatchHistory(
-                            channelName = item.channelName,
-                            channelUrl = item.channelUrl,
-                            duration = item.duration
-                        )
-                        
-                        val jsonObject = response as? JsonObject
-                        val success = jsonObject?.get("success")?.let {
-                            (it as? JsonPrimitive)?.content?.contains("true")
-                        } ?: false
-                        
-                        if (success) {
-                            successCount++
-                            Log.d(TAG, "单条同步成功: ${item.channelName}")
-                        } else {
-                            val errorMsg = jsonObject?.get("error")?.let {
-                                (it as? JsonPrimitive)?.content
-                            } ?: "未知错误"
-                            Log.e(TAG, "单条同步失败: ${errorMsg}")
-                        }
-                    } catch (e: Exception) {
-                        Log.e(TAG, "同步观看记录失败: ${item.channelName}", e)
-                    }
-                }
-                
-                if (successCount > 0) {
-                    Log.d(TAG, "成功同步了 $successCount 条观看记录到服务器")
-                    hasPendingChanges = false
-                    saveToLocal(context)
-                }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "同步观看历史到服务器失败", e)
-        }
-        
-        Log.d(TAG, "同步完成, 成功同步记录数: $successCount")
-        return@withContext successCount
-    }
-    
-    /**
-     * 从服务器加载观看历史记录并合并到本地
-     */
-    suspend fun syncFromServer(context: Context): Boolean = withContext(Dispatchers.IO) {
-        Log.d(TAG, "开始从服务器同步观看历史")
-        
-        if (currentUserId == null) {
-            Log.e(TAG, "同步失败: 未获取到用户ID")
-            return@withContext false
-        }
-        
-        try {
-            val apiClient = SupabaseApiClient()
-            
-            // 获取服务器端数据
-            Log.d(TAG, "请求服务器观看历史数据, 用户ID: $currentUserId")
-            val response = apiClient.getWatchHistory(
-                page = 1,
-                pageSize = 200, // 获取更多数据，确保能获取到所有历史记录
-                timeRange = "all", // 获取所有时间范围的数据
-                sortBy = "watch_start",
-                sortOrder = "desc"
-            )
-            
-            // 解析服务器数据
-            try {
-                val jsonObject = response as? JsonObject
-                Log.d(TAG, "服务器响应: $jsonObject")
-                
-                val itemsArray = jsonObject?.get("items") as? JsonArray
-                if (itemsArray == null) {
-                    Log.e(TAG, "从服务器获取观看历史失败: 无效响应")
-                    return@withContext false
-                }
-                
-                Log.d(TAG, "服务器返回记录数: ${itemsArray.size}")
-                val serverItems = mutableListOf<WatchHistoryItem>()
-                
-                for (jsonElement in itemsArray) {
-                    try {
-                        val item = jsonElement as? JsonObject ?: continue
-                        
-                        // 提取字段值并记录日志
-                        val id = item["id"]?.let { (it as? JsonPrimitive)?.content } ?: ""
-                        val channelName = item["channel_name"]?.let { (it as? JsonPrimitive)?.content } ?: ""
-                        val channelUrl = item["channel_url"]?.let { (it as? JsonPrimitive)?.content } ?: ""
-                        val watchStart = item["watch_start"]?.let { (it as? JsonPrimitive)?.content } ?: ""
-                        val watchEnd = item["watch_end"]?.let { (it as? JsonPrimitive)?.content }
-                        val duration = item["duration"]?.let { (it as? JsonPrimitive)?.content?.toLongOrNull() } ?: 0
-                        
-                        Log.d(TAG, "解析服务器记录: ID=$id, 频道=$channelName, 时长=$duration 秒, 开始时间=$watchStart")
-                        
-                        if (id.isBlank() || channelName.isBlank() || duration <= 0) {
-                            Log.w(TAG, "跳过无效记录: ID=$id, 频道=$channelName, 时长=$duration")
-                            continue
-                        }
-                        
-                        val historyItem = WatchHistoryItem(
-                            id = id,
-                            channelName = channelName,
-                            channelUrl = channelUrl,
-                            watchStart = formatIsoDateTime(watchStart),
-                            watchEnd = watchEnd?.let { formatIsoDateTime(it) },
-                            duration = duration
-                        )
-                        
-                        serverItems.add(historyItem)
-                    } catch (e: Exception) {
-                        Log.e(TAG, "解析历史项目失败: ${e.message}")
-                        // 跳过此项，继续处理下一项
-                    }
-                }
-                
-                Log.d(TAG, "成功解析服务器记录: ${serverItems.size}条")
-                
-                // 合并本地和服务器数据
-                val localIds = watchHistoryItems.map { it.id }.toSet()
-                
-                // 找出服务器上有但本地没有的记录
-                val newServerItems = serverItems.filter { server -> 
-                    !localIds.contains(server.id) 
-                }
-                
-                // 找出本地有但可能未同步到服务器的记录（通常是UUID格式的ID，包含"-"）
-                val pendingLocalItems = watchHistoryItems.filter { it.id.contains("-") }
-                
-                Log.d(TAG, "本地记录数: ${watchHistoryItems.size}, 服务器新记录数: ${newServerItems.size}, 本地待同步记录数: ${pendingLocalItems.size}")
-                
-                if (newServerItems.isNotEmpty()) {
-                    // 添加服务器上的新记录到本地
-                    watchHistoryItems.addAll(newServerItems)
-                    Log.d(TAG, "已添加 ${newServerItems.size} 条服务器新记录到本地")
-                    
-                    // 更新统计数据
-                    updateStatistics()
-                    
-                    // 保存到本地
-                    saveToLocal(context)
-                    Log.d(TAG, "已保存合并后的数据到本地存储")
-                    
-                    // 记录前几条数据的详细信息
-                    newServerItems.take(5).forEachIndexed { index, item ->
-                        Log.d(TAG, "新增服务器记录 #${index+1}: ID=${item.id}, 频道=${item.channelName}, 时长=${item.duration}秒, 开始=${item.watchStart}")
-                    }
-                } else {
-                    Log.d(TAG, "服务器没有新记录需要合并")
-                }
-                
-                // 如果有本地待同步记录，尝试同步到服务器
-                if (pendingLocalItems.isNotEmpty()) {
-                    Log.d(TAG, "尝试将 ${pendingLocalItems.size} 条本地记录同步到服务器")
-                    val syncCount = syncToServer(context)
-                    Log.d(TAG, "成功同步 $syncCount 条记录到服务器")
-                }
-                
-                return@withContext true
-            } catch (e: Exception) {
-                Log.e(TAG, "解析服务器观看历史数据失败", e)
-                return@withContext false
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "从服务器同步观看历史失败", e)
-            return@withContext false
-        }
-    }
-    
-    /**
-     * 清空本地观看历史数据
-     */
-    fun clearLocalHistory(context: Context) {
-        watchHistoryItems.clear()
-        updateStatistics()
-        saveToLocal(context)
-        Log.d(TAG, "已清空本地观看历史")
-    }
-    
-    /**
      * 解析日期时间字符串
      */
     private fun parseDateTime(dateTimeStr: String): Date {
-        return try {
-            val format = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault())
-            val parsedDate = format.parse(dateTimeStr)
-            if (parsedDate != null) {
-                Log.d(TAG, "成功解析日期: $dateTimeStr -> ${parsedDate.time}")
-                parsedDate
-            } else {
-                Log.e(TAG, "日期解析为null: $dateTimeStr")
-                Date()
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "解析日期时间失败: $dateTimeStr", e)
-            // 尝试其他格式
+        if (dateTimeStr.isNullOrBlank()) {
+            Log.e(TAG, "日期字符串为空")
+            return Date()
+        }
+        
+        // 尝试多种可能的日期格式
+        val formats = listOf(
+            "yyyy-MM-dd HH:mm:ss",
+            "yyyy-MM-dd'T'HH:mm:ss",
+            "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",
+            "yyyy-MM-dd'T'HH:mm:ss'Z'",
+            "yyyy-MM-dd"
+        )
+        
+        for (formatPattern in formats) {
             try {
-                val altFormat = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.getDefault())
-                val parsedDate = altFormat.parse(dateTimeStr)
+                val format = java.text.SimpleDateFormat(formatPattern, java.util.Locale.getDefault())
+                if (formatPattern.endsWith("'Z'")) {
+                    format.timeZone = TimeZone.getTimeZone("UTC")
+                }
+                
+            val parsedDate = format.parse(dateTimeStr)
                 if (parsedDate != null) {
-                    Log.d(TAG, "使用备用格式成功解析日期: $dateTimeStr -> ${parsedDate.time}")
+                    Log.d(TAG, "成功解析日期: $dateTimeStr -> ${parsedDate.time} (使用格式: $formatPattern)")
                     return parsedDate
                 }
-            } catch (e2: Exception) {
-                Log.e(TAG, "备用格式解析也失败: $dateTimeStr", e2)
+            } catch (e: Exception) {
+                // 此格式解析失败，尝试下一个
+                continue
             }
-            Date()
         }
+        
+        // 所有格式都解析失败，记录错误并返回当前时间
+        Log.e(TAG, "所有日期格式解析失败: $dateTimeStr")
+        return Date()
     }
     
     /**

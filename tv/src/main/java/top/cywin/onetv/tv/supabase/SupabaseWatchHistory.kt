@@ -54,6 +54,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
 import top.cywin.onetv.core.data.repositories.supabase.SupabaseUserDataIptv
+import top.cywin.onetv.tv.supabase.sync.SupabaseWatchHistorySyncService
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -150,7 +151,7 @@ fun SupabaseWatchHistory(
                     // 只在首次加载时自动同步，避免重复同步
                     Log.d("SupabaseWatchHistory", "本地数据为空或很少，尝试从服务器同步")
                     isSyncing = true
-                    val syncSuccess = SupabaseWatchHistorySessionManager.syncFromServer(context)
+                    val syncSuccess = SupabaseWatchHistorySyncService.syncFromServer(context)
                     isSyncing = false
                     
                     if (syncSuccess) {
@@ -272,7 +273,7 @@ fun SupabaseWatchHistory(
     DisposableEffect(Unit) {
         onDispose {
             scope.launch {
-                SupabaseWatchHistorySessionManager.syncToServer(context)
+                SupabaseWatchHistorySyncService.syncToServer(context)
             }
         }
     }
@@ -1055,7 +1056,7 @@ suspend fun createTestWatchHistory(context: Context): Boolean = withContext(Disp
         // 尝试同步到服务器
         try {
             Log.d("SupabaseWatchHistory", "同步测试记录到服务器")
-            SupabaseWatchHistorySessionManager.syncToServer(context)
+            SupabaseWatchHistorySyncService.syncToServer(context)
         } catch (e: Exception) {
             Log.e("SupabaseWatchHistory", "同步测试记录到服务器失败", e)
             // 不影响返回结果
@@ -1105,7 +1106,7 @@ fun SyncWatchHistoryButton(
                         Log.d("SupabaseWatchHistory", "同步前本地数据: ${beforeHistory.size}条记录")
                         
                         // 从服务器同步数据
-                        val success = SupabaseWatchHistorySessionManager.syncFromServer(context)
+                        val success = SupabaseWatchHistorySyncService.syncFromServer(context)
                         
                         if (success) {
                             resultMessage = "成功从服务器同步观看历史"
@@ -1174,7 +1175,7 @@ fun SyncWatchHistoryButton(
                     
                     try {
                         Log.d("SupabaseWatchHistory", "开始清空本地观看历史")
-                        SupabaseWatchHistorySessionManager.clearLocalHistory(context)
+                        SupabaseWatchHistorySyncService.clearLocalHistory(context)
                         resultMessage = "已清空本地观看历史"
                         Log.d("SupabaseWatchHistory", "已清空本地观看历史")
                         

@@ -37,6 +37,13 @@ jobs:
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
+        
+      - name: Configure Gradle wrapper for CI
+        run: |
+          echo "配置Gradle包装器为网络下载模式..."
+          sed -i 's|distributionUrl=file\\\:///D\\\:/apk/OneTV_Supabase/gradle-8.7-bin.zip|distributionUrl=https\\\://services.gradle.org/distributions/gradle-8.7-bin.zip|g' gradle/wrapper/gradle-wrapper.properties
+          cat gradle/wrapper/gradle-wrapper.properties
+          echo "Gradle包装器配置完成"
 
       - name: Set up Supabase configuration
         run: |

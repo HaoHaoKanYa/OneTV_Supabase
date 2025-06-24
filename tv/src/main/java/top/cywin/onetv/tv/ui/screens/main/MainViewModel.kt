@@ -6,9 +6,14 @@ import android.util.Log
 import android.webkit.WebView
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.gson.Gson
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
@@ -19,34 +24,33 @@ import kotlinx.coroutines.flow.retry
 import kotlinx.coroutines.flow.retryWhen
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import top.cywin.onetv.core.data.entities.channel.Channel
+import top.cywin.onetv.core.data.entities.channel.ChannelGroup
 import top.cywin.onetv.core.data.entities.channel.ChannelGroupList
-import top.cywin.onetv.core.data.entities.channel.ChannelGroupList.Companion.channelList
 import top.cywin.onetv.core.data.entities.channel.ChannelList
-import top.cywin.onetv.core.data.entities.epg.EpgList
-import top.cywin.onetv.core.data.repositories.epg.EpgRepository
+import top.cywin.onetv.core.data.entities.iptvsource.IptvSource
 import top.cywin.onetv.core.data.repositories.iptv.BaseIptvRepository
 import top.cywin.onetv.core.data.repositories.iptv.GuestIptvRepository
 import top.cywin.onetv.core.data.repositories.iptv.IptvRepository
 import top.cywin.onetv.core.data.repositories.supabase.SupabaseSessionManager
+import top.cywin.onetv.core.data.repositories.supabase.SupabaseUserDataIptv
 import top.cywin.onetv.core.data.repositories.supabase.SupabaseUserRepository
+import top.cywin.onetv.core.data.repositories.supabase.cache.SupabaseCacheKey
+import top.cywin.onetv.core.data.repositories.supabase.cache.SupabaseCacheManager
 import top.cywin.onetv.core.data.utils.ChannelUtil
 import top.cywin.onetv.core.data.utils.Constants
-import top.cywin.onetv.tv.ui.utils.Configs
+import top.cywin.onetv.core.data.entities.epg.EpgList
+import top.cywin.onetv.core.data.repositories.epg.EpgRepository
 import top.cywin.onetv.tv.ui.material.Snackbar
 import top.cywin.onetv.tv.ui.material.SnackbarType
+import top.cywin.onetv.tv.ui.utils.Configs
+import top.cywin.onetv.tv.ui.screens.settings.SettingsCategories
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
-import kotlin.coroutines.cancellation.CancellationException
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.SharedFlow
-import kotlinx.coroutines.launch
-import top.cywin.onetv.tv.ui.screens.settings.SettingsCategories
-import top.cywin.onetv.tv.supabase.SupabaseCacheManager
 
 private fun formatBeijingTime(time: Long): String {
     if (time <= 0) return "未记录"
@@ -80,30 +84,88 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             try {
                 _uiState.value = MainUiState.Loading("正在初始化...")
-                iptvRepo = if (SupabaseSessionManager.getSession(appContext).isNullOrEmpty()) {
-                    GuestIptvRepository(source)
-                } else {
+                
+                // 使用超时保护
+                withTimeoutOrNull(5000) { // 5秒超时
                     try {
-                        IptvRepository(source, SupabaseSessionManager.getValidSession(appContext))
+                        // 初始化仓库，使用try-catch包装每个可能失败的步骤
+                        iptvRepo = try {
+                            val session = SupabaseSessionManager.getSession(appContext)
+                            if (session.isNullOrEmpty()) {
+                                Log.d("MainViewModel", "使用游客仓库初始化")
+                                GuestIptvRepository(source)
+                            } else {
+                                try {
+                                    Log.d("MainViewModel", "使用用户仓库初始化")
+                                    IptvRepository(source, session)
+                                } catch (e: Exception) {
+                                    Log.e("MainViewModel", "创建用户仓库失败，回退到游客模式", e)
+                                    GuestIptvRepository(source)
+                                }
+                            }
+                        } catch (e: Exception) {
+                            Log.e("MainViewModel", "获取会话失败，使用游客模式", e)
+                            GuestIptvRepository(source)
+                        }
+                        
+                        // 在后台线程中预加载频道和EPG数据，避免主线程堵塞
+                        launch(Dispatchers.IO) {
+                            try {
+                                Log.d("MainViewModel", "在后台线程中预加载频道数据")
+                                refreshChannel()
+                            } catch (e: Exception) {
+                                Log.e("MainViewModel", "后台加载频道失败", e)
+                            }
+                            
+                            try {
+                                Log.d("MainViewModel", "在后台线程中预加载EPG数据")
+                                refreshEpg()
+                            } catch (e: Exception) {
+                                Log.e("MainViewModel", "后台加载EPG失败", e)
+                            }
+                        }
                     } catch (e: Exception) {
-                        Log.e("MainViewModel", "创建仓库失败", e)
-                        GuestIptvRepository(source)
+                        Log.e("MainViewModel", "初始化过程中发生错误", e)
+                        // 不要抛出异常，让应用继续运行
+                    }
+                } ?: run {
+                    // 超时处理
+                    Log.e("MainViewModel", "初始化超时，确保应用不会卡死")
+                    
+                    // 确保使用游客模式可以继续使用
+                    try {
+                        iptvRepo = GuestIptvRepository(source)
+                        // 在后台线程中加载频道
+                        launch(Dispatchers.IO) {
+                            try {
+                                refreshChannel()
+                            } catch (e: Exception) {
+                                Log.e("MainViewModel", "备用初始化失败", e)
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.e("MainViewModel", "备用初始化失败", e)
+                        _uiState.value = MainUiState.Error("初始化超时，请重试")
                     }
                 }
-                refreshChannel()
-                refreshEpg()
             } catch (e: Exception) {
-                // 当捕获到 CancellationException 时，记录详细中文解释说明该错误是协程取消的正常现象
-                if (e is CancellationException) {
-                    Log.e("MainViewModel", "初始化错误: 协程被取消 - 此异常由协程取消机制触发。\n" +
-                            "可能原因包括：\n" +
-                            "1. 用户界面切换或退出导致父协程取消\n" +
-                            "2. 清理缓存后调用 init() 重新初始化时，原有协程任务被取消\n" +
-                            "该错误为正常现象，不影响后续的数据加载和 UI 更新。", e)
-                } else {
-                    Log.e("MainViewModel", "初始化错误: ${e.message}", e)
+                Log.e("MainViewModel", "初始化主流程异常", e)
+                _uiState.value = MainUiState.Error("初始化失败: ${e.message}")
+                
+                // 确保使用游客模式可以继续使用
+                try {
+                    iptvRepo = GuestIptvRepository(source)
+                    // 在后台线程中加载频道
+                    launch(Dispatchers.IO) {
+                        try {
+                            refreshChannel()
+                        } catch (e2: Exception) {
+                            Log.e("MainViewModel", "备用初始化也失败", e2)
+                        }
+                    }
+                } catch (e2: Exception) {
+                    Log.e("MainViewModel", "备用初始化也失败", e2)
                 }
-                _uiState.value = MainUiState.Error(e.message)
             }
         }
     }
@@ -111,16 +173,32 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun logout() {
         viewModelScope.launch {
             Log.d("MainViewModel", "开始退出登录流程")
-            SupabaseSessionManager.clearSession(appContext)
-            Log.d("MainViewModel", "会话已清除")
-            SupabaseSessionManager.clearLastLoadedTime(appContext)
-            Log.d("MainViewModel", "时间戳已重置")
             
-            // 清除用户资料和设置缓存
-            SupabaseCacheManager.clearAllCachesOnLogout(appContext)
-            Log.d("MainViewModel", "用户资料和设置缓存已清除")
+            // 在IO线程上执行清除会话和缓存的操作
+            withContext(Dispatchers.IO) {
+                try {
+                    SupabaseSessionManager.clearSession(appContext)
+                    Log.d("MainViewModel", "会话已清除")
+                    
+                    SupabaseSessionManager.clearLastLoadedTime(appContext)
+                    Log.d("MainViewModel", "时间戳已重置")
+                    
+                    // 清除用户资料和设置缓存
+                    try {
+                        // 清除所有缓存
+                        SupabaseCacheManager.clearCache(appContext, SupabaseCacheKey.USER_DATA)
+                        Log.d("MainViewModel", "用户资料和设置缓存已清除")
+                    } catch (e: Exception) {
+                        Log.e("MainViewModel", "清除缓存失败", e)
+                    }
+                    
+                    clearAllCache(clearUserCache = true)
+                } catch (e: Exception) {
+                    Log.e("MainViewModel", "退出登录过程中发生错误", e)
+                }
+            }
             
-            clearAllCache(clearUserCache = true)
+            // 重置为游客仓库
             iptvRepo = GuestIptvRepository(source)
             Log.d("MainViewModel", "已重置为游客仓库")
         }
@@ -144,9 +222,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 if (clearUserCache) {
                     // 【步骤2】主动清除所有缓存（退出登录时调用）
                     Log.d("MainViewModel", "🔥 开始强制清除所有缓存｜时间：${formatBeijingTime(System.currentTimeMillis())}")
-                    SupabaseSessionManager.clearUserCache(appContext).also {
-                        Log.d("MainViewModel", "🗑️ 用户缓存清除结果：$it")
-                    }
+                    
+                    // 使用新的缓存管理器清除用户数据缓存
+                    SupabaseCacheManager.clearCache(appContext, SupabaseCacheKey.USER_DATA)
+                    Log.d("MainViewModel", "🗑️ 用户缓存已清除")
+                    
                     EpgList.clearCache().also {
                         Log.d("MainViewModel", "🗑️ EPG缓存已清除")
                     }
@@ -158,23 +238,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     // 【步骤3】自动清理检查（仅针对VIP用户）
                     Log.d("MainViewModel", "🔍 开始自动缓存清理检查")
                     val userData = SupabaseSessionManager.getCachedUserData(appContext).also {
-                        Log.d("MainViewModel", "�� 缓存检查结果｜用户ID=${it?.userid ?: "空"}｜VIP=${it?.is_vip ?: "未登录"}")
+                        Log.d("MainViewModel", " 缓存检查结果｜用户ID=${it?.userid ?: "空"}｜VIP=${it?.is_vip ?: "未登录"}")
                     }
                     if (userData?.is_vip == true) {
-                        // 【步骤4】VIP用户：基础缓存过期阈值为30天
-                        val vipBaseThreshold = 30L * 24 * 3600 * 1000
-                        val lastLoaded = SupabaseSessionManager.getLastLoadedTime(appContext)
-                        val currentTime = System.currentTimeMillis()
-                        val isExpired = (currentTime - lastLoaded) > vipBaseThreshold
-                        Log.d("MainViewModel", "VIP自动清理检查｜使用30天阈值 " +
-                                "当前时间：${formatBeijingTime(currentTime)}｜" +
-                                "最后加载时间：${if (lastLoaded == 0L) "未记录" else formatBeijingTime(lastLoaded)}｜" +
-                                "时间差：${currentTime - lastLoaded}ms｜过期：$isExpired")
-                        // 【修改点】撤销VIP剩余时间的计算，不再判断VIP剩余时间是否不足48小时
-                        // 仅依据基础缓存时间是否超过30天来触发自动清理
-                        if (isExpired) {
-                            Log.d("MainViewModel", "🚮 触发自动清理｜VIP缓存已超过30天")
-                            SupabaseSessionManager.clearUserCache(appContext)
+                        // 检查缓存是否有效
+                        val isValid = SupabaseCacheManager.isValid(appContext, SupabaseCacheKey.USER_DATA)
+                        Log.d("MainViewModel", "VIP自动清理检查｜缓存是否有效：$isValid")
+                        
+                        if (!isValid) {
+                            Log.d("MainViewModel", "🚮 触发自动清理｜VIP缓存已过期")
+                            SupabaseCacheManager.clearCache(appContext, SupabaseCacheKey.USER_DATA)
                             EpgList.clearCache()
                             iptvRepo.clearCache()
                         } else {
@@ -240,11 +313,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
                 // 步骤3：立即保存到缓存
                 SupabaseSessionManager.saveCachedUserData(context, userData)
-                SupabaseSessionManager.saveLastLoadedTime(context, System.currentTimeMillis())
 
                 // 步骤4：重建仓库确保数据一致性
                 iptvRepo = IptvRepository(source, session)
                 Log.d("MainViewModel", "🔄 IPTV仓库已重建")
+                
+                // 步骤5：在后台线程中刷新频道和节目单
+                launch(Dispatchers.IO) {
+                    try {
+                        refreshChannel()
+                        Log.d("MainViewModel", "🔄 后台刷新频道数据完成")
+                    } catch (e: Exception) {
+                        Log.e("MainViewModel", "后台刷新频道失败", e)
+                    }
+                    
+                    try {
+                        refreshEpg()
+                        Log.d("MainViewModel", "🔄 后台刷新节目单数据完成")
+                    } catch (e: Exception) {
+                        Log.e("MainViewModel", "后台刷新节目单失败", e)
+                    }
+                }
 
                 onComplete(true)
             } catch (e: Exception) {
@@ -273,7 +362,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
                     // 步骤2：保存用户数据到缓存
                     SupabaseSessionManager.saveCachedUserData(appContext, newUserData)
-                    SupabaseSessionManager.saveLastLoadedTime(appContext, System.currentTimeMillis())
                     Log.d("MainViewModel", "💾 用户数据已缓存｜VIP=${newUserData.is_vip}｜到期时间=${newUserData.vipend}")
                 }
 
@@ -290,11 +378,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     GuestIptvRepository(source)
                 }
 
-                // 步骤4：刷新频道和节目单
-                Log.d("MainViewModel", "🔄 正在刷新频道数据...")
-                refreshChannel()
-                Log.d("MainViewModel", "🔄 正在刷新节目单数据...")
-                refreshEpg()
+                // 步骤4：在后台线程中刷新频道和节目单
+                launch(Dispatchers.IO) {
+                    try {
+                        Log.d("MainViewModel", "🔄 在后台线程中刷新频道数据...")
+                        refreshChannel()
+                    } catch (e: Exception) {
+                        Log.e("MainViewModel", "后台刷新频道失败", e)
+                    }
+                    
+                    try {
+                        Log.d("MainViewModel", "🔄 在后台线程中刷新节目单数据...")
+                        refreshEpg()
+                    } catch (e: Exception) {
+                        Log.e("MainViewModel", "后台刷新节目单失败", e)
+                    }
+                }
 
                 Log.d("MainViewModel", "🎉 强制刷新流程完成")
                 _toastMessage.emit("用户数据已刷新")
@@ -347,8 +446,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private suspend fun hybridChannel(channelGroupList: ChannelGroupList): ChannelGroupList =
         withContext(Dispatchers.Default) {
             when (Configs.iptvHybridMode) {
-                top.cywin.onetv.tv.ui.utils.Configs.IptvHybridMode.DISABLE -> channelGroupList
-                top.cywin.onetv.tv.ui.utils.Configs.IptvHybridMode.IPTV_FIRST -> {
+                Configs.IptvHybridMode.DISABLE -> channelGroupList
+                Configs.IptvHybridMode.IPTV_FIRST -> {
                     ChannelGroupList(channelGroupList.map { group ->
                         group.copy(channelList = ChannelList(group.channelList.map { channel ->
                             channel.copy(
@@ -359,7 +458,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         }))
                     })
                 }
-                top.cywin.onetv.tv.ui.utils.Configs.IptvHybridMode.HYBRID_FIRST -> {
+                Configs.IptvHybridMode.HYBRID_FIRST -> {
                     ChannelGroupList(channelGroupList.map { group ->
                         group.copy(channelList = ChannelList(group.channelList.map { channel ->
                             channel.copy(
@@ -375,11 +474,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private suspend fun refreshEpg() {
         if (!Configs.epgEnable) return
         if (_uiState.value is MainUiState.Ready) {
-            EpgList.clearCache()
+            // 使用EpgList的伴生对象中的clearCache方法
+            EpgList.Companion.clearCache()
             val channelGroupList = (_uiState.value as MainUiState.Ready).channelGroupList
+            
+            // 创建一个包含所有频道epgName的列表
+            val epgNames = mutableListOf<String>()
+            for (group in channelGroupList) {
+                for (channel in group.channelList) {
+                    if (channel.epgName.isNotEmpty()) {
+                        epgNames.add(channel.epgName)
+                    }
+                }
+            }
+            
             flow {
                 val epgList = EpgRepository(Configs.epgSourceCurrent).getEpgList(
-                    filteredChannels = channelGroupList.channelList.map { it.epgName },
+                    filteredChannels = epgNames,
                     refreshTimeThreshold = Configs.epgRefreshTimeThreshold,
                 )
                 emit(epgList)

@@ -30,6 +30,9 @@ import top.cywin.onetv.core.data.BuildConfig
 object SupabaseClient {
     private const val TAG = "SupabaseClient"
     
+    // 存储应用上下文
+    private var appContext: Context? = null
+    
     // 使用SupabaseConstants中的引导配置
     private val bootstrapUrl: String
         get() = SupabaseConstants.bootstrapUrl
@@ -49,6 +52,14 @@ object SupabaseClient {
     
     // 是否已初始化
     private var isInitialized = false
+    
+    /**
+     * 获取应用上下文
+     * @return 应用上下文，如果未初始化则返回null
+     */
+    fun getAppContext(): Context? {
+        return appContext
+    }
     
     // 引导客户端 - 用于访问配置表和Edge Functions
     private val bootstrapClient by lazy {
@@ -119,6 +130,9 @@ object SupabaseClient {
      */
     fun initialize(context: Context) {
         Log.i(TAG, "开始初始化 Supabase 客户端")
+        
+        // 保存应用上下文
+        appContext = context.applicationContext
         
         // 先尝试从本地缓存加载配置
         try {

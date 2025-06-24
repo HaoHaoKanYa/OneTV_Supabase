@@ -38,6 +38,9 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
@@ -305,9 +308,12 @@ fun ClassicChannelScreen(
     val context = LocalContext.current
 
     // 获取用户类型
-    val userType = remember {
-        val userData = SupabaseSessionManager.getCachedUserData(context)
-        if (userData != null) {
+    var userType by remember { mutableStateOf(0) }
+    LaunchedEffect(Unit) {
+        val userData = withContext(Dispatchers.IO) {
+            SupabaseSessionManager.getCachedUserData(context)
+        }
+        userType = if (userData != null) {
             if (userData.is_vip) 2 // VIP用户
             else 1 // 普通注册会员
         } else {

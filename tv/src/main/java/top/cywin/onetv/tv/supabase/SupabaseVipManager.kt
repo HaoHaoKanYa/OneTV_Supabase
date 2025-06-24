@@ -58,6 +58,8 @@ import top.cywin.onetv.core.data.repositories.supabase.SupabaseSessionManager
 import top.cywin.onetv.core.data.repositories.supabase.SupabaseUserDataIptv
 import top.cywin.onetv.core.data.repositories.supabase.SupabaseUserRepository
 import top.cywin.onetv.core.data.repositories.supabase.SupabaseClient
+import top.cywin.onetv.core.data.repositories.supabase.cache.SupabaseCacheKey
+import top.cywin.onetv.core.data.repositories.supabase.cache.SupabaseCacheManager
 import java.util.concurrent.TimeUnit
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -66,6 +68,16 @@ import java.util.TimeZone
 import top.cywin.onetv.tv.supabase.SupabaseUserProfileInfoSessionManager
 
 private const val TAG = "VipManager"
+
+/**
+ * VIP状态数据类
+ */
+data class VipStatus(
+    val isVip: Boolean,
+    val vipStart: String? = null,
+    val vipEnd: String? = null,
+    val daysRemaining: Int = 0
+)
 
 /**
  * VIP管理界面
@@ -91,7 +103,7 @@ fun SupabaseVipManager(
         scope.launch {
             try {
                 isCheckingStatus = true
-                val session = SupabaseSessionManager.getSession(context)
+                val session = SupabaseCacheManager.getCache<String>(context, SupabaseCacheKey.SESSION)
                 if (session == null) {
                     Log.w(TAG, "未登录，无法获取VIP状态")
                     statusMessage = "未登录，请先登录" to false
@@ -126,13 +138,18 @@ fun SupabaseVipManager(
                             
                             if (response.isSuccessful && responseBody != null) {
                                 val jsonObject = JSONObject(responseBody)
-                                vipStatus = VipStatus(
+                                val newVipStatus = VipStatus(
                                     isVip = jsonObject.getBoolean("is_vip"),
                                     vipStart = jsonObject.optString("vipstart"),
                                     vipEnd = jsonObject.optString("vipend"),
                                     daysRemaining = jsonObject.optInt("days_remaining")
                                 )
+                                
+                                // 保存到缓存
+                                SupabaseCacheManager.saveCache(context, SupabaseCacheKey.USER_VIP_STATUS, newVipStatus)
+                                
                                 withContext(Dispatchers.Main) {
+                                    vipStatus = newVipStatus
                                     statusMessage = "VIP状态已更新" to true
                                 }
                                 Log.d(TAG, "成功获取VIP状态: $vipStatus")
@@ -143,9 +160,15 @@ fun SupabaseVipManager(
                     } catch (e: Exception) {
                         Log.e(TAG, "API调用异常", e)
                         
+                        // 尝试从缓存读取
+                        val cachedVipStatus = SupabaseCacheManager.getCache<VipStatus>(context, SupabaseCacheKey.USER_VIP_STATUS)
+                        
                         // 如果API调用失败但有用户数据，则使用用户数据构建VIP状态
                         withContext(Dispatchers.Main) {
-                            if (userData != null && vipStatus == null) {
+                            if (cachedVipStatus != null) {
+                                vipStatus = cachedVipStatus
+                                statusMessage = "使用本地VIP状态" to true
+                            } else if (userData != null && vipStatus == null) {
                                 val isVip = userData.is_vip
                                 val vipStart = userData.vipstart
                                 val vipEnd = userData.vipend
@@ -157,13 +180,17 @@ fun SupabaseVipManager(
                                     0
                                 }
                                 
-                                vipStatus = VipStatus(
+                                val newVipStatus = VipStatus(
                                     isVip = isVip,
                                     vipStart = vipStart,
                                     vipEnd = vipEnd,
                                     daysRemaining = remainingDays
                                 )
                                 
+                                // 保存到缓存
+                                SupabaseCacheManager.saveCache(context, SupabaseCacheKey.USER_VIP_STATUS, newVipStatus)
+                                
+                                vipStatus = newVipStatus
                                 statusMessage = "使用本地VIP状态" to true
                             } else {
                                 statusMessage = "获取VIP状态失败，请稍后再试" to false
@@ -175,12 +202,20 @@ fun SupabaseVipManager(
                 Log.e(TAG, "VIP状态检查异常", e)
                 // 如果异常后vipStatus为空但userData不为空，使用用户数据构建默认状态
                 if (vipStatus == null && userData != null) {
-                    vipStatus = VipStatus(
+                    val vipEndStr = userData.vipend
+                    val newVipStatus = VipStatus(
                         isVip = userData.is_vip,
                         vipStart = userData.vipstart,
-                        vipEnd = userData.vipend,
-                        daysRemaining = if (userData.vipend != null) calculateVipRemainingDays(userData.vipend) else 0
+                        vipEnd = vipEndStr,
+                        daysRemaining = if (vipEndStr != null) calculateVipRemainingDays(vipEndStr) else 0
                     )
+                    
+                    // 保存到缓存
+                    scope.launch {
+                        SupabaseCacheManager.saveCache(context, SupabaseCacheKey.USER_VIP_STATUS, newVipStatus)
+                    }
+                    
+                    vipStatus = newVipStatus
                     statusMessage = "已加载本地VIP状态" to true
                 } else {
                     statusMessage = "检查VIP状态出错: ${e.message}" to false
@@ -210,7 +245,7 @@ fun SupabaseVipManager(
                 }
                 
                 isActivating = true
-                val session = SupabaseSessionManager.getSession(context)
+                val session = SupabaseCacheManager.getCache<String>(context, SupabaseCacheKey.SESSION)
                 if (session == null) {
                     Log.w(TAG, "未登录，无法激活VIP")
                     statusMessage = "未登录，请先登录" to false
@@ -258,8 +293,9 @@ fun SupabaseVipManager(
                                     Log.d(TAG, "VIP激活成功: $message, 天数: $days")
                                     
                                     // 激活成功后，强制刷新VIP状态
-                                    // 使用户资料缓存失效，确保下次加载时获取最新数据
-                                    SupabaseUserProfileInfoSessionManager.invalidateCache(context)
+                                    // 使缓存失效，确保下次加载时获取最新数据
+                                    SupabaseCacheManager.clearCache(context, SupabaseCacheKey.USER_VIP_STATUS)
+                                    SupabaseCacheManager.clearCache(context, SupabaseCacheKey.USER_DATA)
                                     Log.d(TAG, "已使用户资料缓存失效，下次将从服务器获取最新数据")
                                     
                                     // 刷新VIP状态
@@ -314,8 +350,15 @@ fun SupabaseVipManager(
     // 初始加载
     LaunchedEffect(userData) {
         if (!isLoading && userData != null) {
+            // 尝试从缓存获取VIP状态
+            val cachedVipStatus = SupabaseCacheManager.getCache<VipStatus>(context, SupabaseCacheKey.USER_VIP_STATUS)
+            if (cachedVipStatus != null) {
+                vipStatus = cachedVipStatus
+                Log.d(TAG, "从缓存加载VIP状态: $cachedVipStatus")
+            } else {
             // 每次打开界面都从服务器获取最新VIP状态
             checkVipStatus()
+            }
         }
     }
     
@@ -502,7 +545,11 @@ fun SupabaseVipManager(
                                 modifier = Modifier.size(24.dp)
                             )
                         } else {
-                            Text("激活VIP", fontWeight = FontWeight.Bold)
+                            Text(
+                                text = "激活VIP",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold
+                            )
                         }
                     }
                 }
@@ -511,23 +558,11 @@ fun SupabaseVipManager(
     }
 }
 
-/**
- * VIP状态数据类
- */
-data class VipStatus(
-    val isVip: Boolean,
-    val vipStart: String?,
-    val vipEnd: String?,
-    val daysRemaining: Int
-)
-
-/**
- * VIP信息行组件
- */
 @Composable
 fun VipInfoRow(
     label: String,
     value: String,
+    labelColor: Color = Color.LightGray,
     valueColor: Color = Color.White
 ) {
     Row(
@@ -538,13 +573,13 @@ fun VipInfoRow(
     ) {
         Text(
             text = label,
-            color = Color.LightGray,
-            fontSize = 16.sp
+            color = labelColor,
+            fontSize = 14.sp
         )
         Text(
             text = value,
             color = valueColor,
-            fontSize = 16.sp,
+            fontSize = 14.sp,
             fontWeight = FontWeight.Medium
         )
     }
@@ -553,65 +588,49 @@ fun VipInfoRow(
 /**
  * 计算VIP剩余天数
  */
-fun calculateVipRemainingDays(endDateString: String?): Int {
-    if (endDateString.isNullOrEmpty()) return 0
+private fun calculateVipRemainingDays(vipEndStr: String): Int {
+    if (vipEndStr.isBlank()) return 0
     
-    return try {
-        // 首先尝试解析标准ISO格式
-        val inputFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.getDefault())
-        inputFormat.timeZone = TimeZone.getTimeZone("UTC")  // Supabase日期是UTC时间
+    try {
+        // 解析日期格式，例如："2023-12-31"
+        val format = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        format.timeZone = TimeZone.getTimeZone("GMT+8") // 使用北京时间
         
-        var endDate = try {
-            inputFormat.parse(endDateString)
-        } catch (e: Exception) {
-            // 如果失败，尝试简单的年月日格式
-            val simpleFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-            simpleFormat.parse(endDateString)
-        }
-        
-        if (endDate == null) {
-            Log.e(TAG, "无法解析日期: $endDateString")
-            return 0
-        }
-        
+        val endDate = format.parse(vipEndStr) ?: return 0
         val currentDate = Date()
+        
+        // 计算时间差（毫秒）
         val diff = endDate.time - currentDate.time
-        val days = (diff / (1000 * 60 * 60 * 24)).toInt()
         
-        // 记录日志以便调试
-        Log.d(TAG, "日期计算: 当前=${currentDate}, 结束=${endDate}, 差值=${diff}毫秒, ${days}天")
+        // 如果已过期，返回0
+        if (diff <= 0) return 0
         
-        // 确保至少返回0或正数
-        return if (days < 0) 0 else days
+        // 转换为天数并返回
+        return (diff / (1000 * 60 * 60 * 24)).toInt()
     } catch (e: Exception) {
-        Log.e(TAG, "计算剩余天数异常: $endDateString", e)
-        0  // 如果出现任何异常，默认返回0
+        Log.e(TAG, "计算VIP剩余天数出错", e)
+        return 0
     }
 }
 
 /**
- * 格式化日期时间显示
+ * 格式化VIP日期时间显示
  */
-fun formatVipDateTime(dateTime: String?): String {
-    return dateTime?.let {
-        try {
-            // Supabase返回的日期格式可能是ISO 8601格式
-            val inputFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.getDefault())
-            inputFormat.timeZone = TimeZone.getTimeZone("UTC")  // Supabase日期是UTC时间
-
-            val outputFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-            val date = inputFormat.parse(it)
-            date?.let { outputFormat.format(it) } ?: it
+private fun formatVipDateTime(dateTimeStr: String?): String {
+    if (dateTimeStr.isNullOrBlank()) return "未设置"
+    
+    return try {
+        // 原格式可能是 "2023-12-31"
+        val inputFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        inputFormat.timeZone = TimeZone.getTimeZone("GMT+8") // 使用北京时间
+        
+        val date = inputFormat.parse(dateTimeStr) ?: return dateTimeStr
+        
+        // 输出格式为 "2023年12月31日"
+        val outputFormat = SimpleDateFormat("yyyy年MM月dd日", Locale.getDefault())
+        outputFormat.format(date)
         } catch (e: Exception) {
-            // 尝试另一种格式
-            try {
-                val simpleFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-                val date = simpleFormat.parse(it)
-                date?.let { simpleFormat.format(it) } ?: it
-            } catch (e2: Exception) {
-                Log.e(TAG, "日期格式化错误: $it", e2)
-                it  // 如果解析失败，则返回原始字符串
-            }
+        // 如果解析失败，直接返回原字符串
+        dateTimeStr
         }
-    } ?: "未设置"
 }

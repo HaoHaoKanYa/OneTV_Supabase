@@ -15,6 +15,8 @@ import androidx.compose.ui.Modifier
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import top.cywin.onetv.core.data.repositories.supabase.SupabaseSessionManager
 import top.cywin.onetv.core.data.repositories.supabase.SupabaseUserDataIptv
 
@@ -49,7 +51,11 @@ class SupabaseUserProfileActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         
         // 检查用户登录状态
-        val session = SupabaseSessionManager.getSession(this)
+        // 在UI线程使用runBlocking执行协程操作
+        val session = runBlocking {
+            SupabaseSessionManager.getSession(this@SupabaseUserProfileActivity)
+        }
+        
         if (session == null) {
             Toast.makeText(this, "请先登录", Toast.LENGTH_SHORT).show()
             resetOrientation()
@@ -74,6 +80,18 @@ class SupabaseUserProfileActivity : ComponentActivity() {
                 }
             }
         }
+    }
+    
+    // 重置屏幕方向为系统默认
+    private fun resetOrientation() {
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        Log.d(TAG, "已重置屏幕方向为系统默认")
+    }
+    
+    // 设置屏幕为横屏模式
+    private fun setLandscapeOrientationForProfile() {
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        Log.d(TAG, "已设置屏幕方向为横屏")
     }
     
     override fun onResume() {

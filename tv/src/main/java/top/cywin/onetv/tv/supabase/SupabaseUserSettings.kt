@@ -290,7 +290,10 @@ fun SupabaseUserSettings(
             }
             
             // 缓存状态逻辑保留，但不再显示指示器
-            val lastLoadedTime = SupabaseUserSettingsSessionManager.getLastLoadedTime(context)
+            var lastLoadedTime = 0L
+            scope.launch {
+                lastLoadedTime = SupabaseUserSettingsSessionManager.getLastLoadedTime(context)
+            }
             val currentTime = if (lastLoadedTime > 0) System.currentTimeMillis() else 0
             val timeDiff = currentTime - lastLoadedTime
             
@@ -365,7 +368,9 @@ fun SupabaseUserSettings(
                 Button(
                     onClick = {
                         // 手动使缓存失效并刷新数据
-                        SupabaseUserSettingsSessionManager.invalidateCache(context)
+                        scope.launch {
+                            SupabaseUserSettingsSessionManager.invalidateCache(context)
+                        }
                         isSettingsLoading = true
                         
                         scope.launch {

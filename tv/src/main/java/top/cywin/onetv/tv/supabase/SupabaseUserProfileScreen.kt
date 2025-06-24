@@ -5,7 +5,9 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
+import android.os.Bundle
 import android.util.Log
+import androidx.activity.ComponentActivity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -23,6 +25,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
@@ -54,7 +60,7 @@ import kotlinx.coroutines.withContext
 import top.cywin.onetv.core.data.repositories.supabase.SupabaseSessionManager
 import top.cywin.onetv.core.data.repositories.supabase.SupabaseUserDataIptv
 import top.cywin.onetv.core.data.repositories.supabase.SupabaseUserRepository
-import androidx.activity.ComponentActivity
+import top.cywin.onetv.core.data.repositories.supabase.cache.SupabaseCacheKey
 import top.cywin.onetv.tv.supabase.SupabaseCacheManager
 
 /**
@@ -89,60 +95,87 @@ fun SupabaseUserProfileScreen(
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     
     // 获取当前用户会话和数据
-    val session = remember { SupabaseSessionManager.getSession(context) }
+    var session by remember { mutableStateOf<String?>(null) }
     var userData by remember { mutableStateOf<SupabaseUserDataIptv?>(null) }
     var isLoading by remember { mutableStateOf(true) }
     var selectedTab by remember { mutableIntStateOf(0) }
     
+    // 加载会话数据
+    LaunchedEffect(Unit) {
+        session = SupabaseSessionManager.getSession(context)
+    }
+    
     // 判断用户是否已登录
-    val isLoggedIn = remember { session != null && session.isNotEmpty() }
+    val isLoggedIn = session != null && session!!.isNotEmpty()
     
     // 获取用户数据
-    LaunchedEffect(Unit) {
+    LaunchedEffect(session) {
         try {
             isLoading = true
             
-            // 先获取最新的用户数据（从SupabaseSessionManager缓存中）
-            val sessionCachedData = SupabaseSessionManager.getCachedUserData(context)
-            
-            // 再尝试从专用缓存加载
-            val profileCachedData = SupabaseUserProfileInfoSessionManager.getCachedUserProfileData(context)
-            
-            // 检查缓存是否有效（基于时间和关键字段变化）
-            if (profileCachedData != null && 
-                SupabaseUserProfileInfoSessionManager.isCacheValid(context, sessionCachedData)) {
-                // 如果缓存有效，直接使用缓存数据
-                userData = profileCachedData
-                Log.d("UserProfile", "使用缓存的用户数据: ${profileCachedData.username} | 缓存有效期: 30天")
-                isLoading = false
-            } else {
-                // 缓存无效或不存在，从服务器加载
-                if (session != null) {
-                    withContext(Dispatchers.IO) {
+            // 使用IO线程加载所有缓存和网络数据
+            withContext(Dispatchers.IO) {
+                // 先尝试从USER_DATA缓存加载
+                val userDataFromCache = SupabaseCacheManager.getCache<SupabaseUserDataIptv>(context, SupabaseCacheKey.USER_DATA)
+                
+                // 如果USER_DATA缓存有效，直接使用
+                if (userDataFromCache != null && SupabaseCacheManager.isValid(context, SupabaseCacheKey.USER_DATA)) {
+                    Log.d("UserProfile", "使用主缓存的用户数据: ${userDataFromCache.username}")
+                    
+                    // 切换到主线程更新UI状态
+                    withContext(Dispatchers.Main) {
+                        userData = userDataFromCache
+                        isLoading = false
+                    }
+                } else {
+                    // 缓存无效或不存在，从服务器加载
+                    val sessionStr = session
+                    if (sessionStr != null) {
                         try {
-                            val freshData = SupabaseUserRepository().getUserData(session)
+                            val freshData = SupabaseUserRepository().getUserData(sessionStr)
+                            
+                            // 保存到主缓存
+                            SupabaseCacheManager.saveCache(
+                                context = context,
+                                key = SupabaseCacheKey.USER_DATA,
+                                data = freshData
+                            )
+                            
+                            // 同时保存到个人资料专用缓存
+                            SupabaseUserProfileInfoSessionManager.saveUserProfileData(context, freshData)
+                            
+                            Log.d("UserProfile", "从服务器获取新的用户数据: ${freshData.username}")
+                            
+                            // 切换到主线程更新UI状态
                             withContext(Dispatchers.Main) {
                                 userData = freshData
-                                // 保存到专用缓存
-                                SupabaseUserProfileInfoSessionManager.saveUserProfileData(context, freshData)
-                                Log.d("UserProfile", "从服务器获取新的用户数据: ${freshData.username} | 原因: ${
-                                    if (profileCachedData == null) "无缓存" 
-                                    else "缓存已失效（时间或关键字段变化）"
-                                }")
+                                isLoading = false
                             }
                         } catch (e: Exception) {
                             Log.e("UserProfile", "从服务器获取用户数据失败", e)
-                            // 如果从服务器获取失败但有缓存，仍然使用缓存
-                            if (profileCachedData != null) {
+                            // 如果从服务器获取失败但有缓存，仍然尝试使用缓存
+                            val cachedData = SupabaseCacheManager.getCache<SupabaseUserDataIptv>(context, SupabaseCacheKey.USER_DATA)
+                            if (cachedData != null) {
+                                // 切换到主线程更新UI状态
                                 withContext(Dispatchers.Main) {
-                                    userData = profileCachedData
-                                    Log.d("UserProfile", "服务器获取失败，使用过期缓存数据: ${profileCachedData.username}")
+                                    userData = cachedData
+                                    isLoading = false
+                                    Log.d("UserProfile", "服务器获取失败，使用缓存数据: ${cachedData.username}")
+                                }
+                            } else {
+                                // 切换到主线程更新UI状态
+                                withContext(Dispatchers.Main) {
+                                    isLoading = false
                                 }
                             }
                         }
+                    } else {
+                        // 切换到主线程更新UI状态
+                        withContext(Dispatchers.Main) {
+                            isLoading = false
+                        }
                     }
                 }
-                isLoading = false
             }
         } catch (e: Exception) {
             Log.e("UserProfile", "加载用户数据失败", e)
@@ -215,22 +248,34 @@ fun SupabaseUserProfileScreen(
                                 try {
                                     // 获取Activity上下文
                                     val activity = context as? ComponentActivity
-                                    // 清除所有用户相关的缓存
-                                    SupabaseCacheManager.clearAllCachesOnLogout(context)
+                                    
+                                    // 在IO线程中执行缓存清理操作
+                                    withContext(Dispatchers.IO) {
+                                        // 清除所有用户相关的缓存
+                                        SupabaseCacheManager.clearAllCachesOnLogout(context)
+                                        Log.d("UserProfile", "用户缓存已在后台线程中清除")
+                                    }
+                                    
                                     // 调用MainViewModel的logout方法
                                     val mainViewModel = activity?.let { 
                                         ViewModelProvider(it).get(top.cywin.onetv.tv.ui.screens.main.MainViewModel::class.java) 
                                     }
+                                    // logout方法内部已经使用了后台线程处理
                                     mainViewModel?.logout()
                                     Log.d("UserProfile", "用户已退出登录，缓存已清除")
+                                    
                                     // 显示退出成功提示
-                                    (context as? ComponentActivity)?.let {
-                                        android.widget.Toast.makeText(context, "已退出登录", android.widget.Toast.LENGTH_SHORT).show()
+                                    withContext(Dispatchers.Main) {
+                                        (context as? ComponentActivity)?.let {
+                                            android.widget.Toast.makeText(context, "已退出登录", android.widget.Toast.LENGTH_SHORT).show()
+                                        }
                                     }
                                 } catch (e: Exception) {
                                     Log.e("UserProfile", "退出登录失败", e)
-                                    (context as? ComponentActivity)?.let {
-                                        android.widget.Toast.makeText(context, "退出登录失败: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+                                    withContext(Dispatchers.Main) {
+                                        (context as? ComponentActivity)?.let {
+                                            android.widget.Toast.makeText(context, "退出登录失败: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+                                        }
                                     }
                                 }
                             }
