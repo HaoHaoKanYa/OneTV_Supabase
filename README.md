@@ -29,15 +29,6 @@
 
 
 
-- **认证系统**：Supabase Auth，支持多种登录方式和安全认证
-- **数据存储**：PostgreSQL 数据库，强大的关系型数据存储
-- **实时更新**：Realtime API，提供数据实时同步
-- **Edge Functions**：无服务器函数，处理复杂业务逻辑
-- **存储系统**：Storage API，管理用户上传的内容
-- **安全策略**：Row Level Security，精细的权限控制
-
-## 📋 环境要求
-
 - Android Studio Iguana (2023.2.1) 或更高版本
 - JDK 17+
 - Gradle 8.6+
