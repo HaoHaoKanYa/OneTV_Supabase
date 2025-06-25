@@ -391,11 +391,10 @@ class SupabaseApiClient {
             log.d("获取观看历史: page=$page, timeRange=$timeRange, sortBy=$sortBy, method=$method")
             
             val response = functions.invoke(
-                function = "watch_history?action=list&page=$page&pageSize=$pageSize&timeRange=$timeRange&sortBy=$sortBy&sortOrder=$sortOrder",
-                headers = io.ktor.http.Headers.build {
-                    append("Method", "GET")  // 强制使用GET方法，不再使用参数中的method
-                }
-            )
+                "watch_history?action=list&page=$page&pageSize=$pageSize&timeRange=$timeRange&sortBy=$sortBy&sortOrder=$sortOrder"
+            ) {
+                this.method = io.ktor.http.HttpMethod.Get
+            }
             
             // 检查响应是否为空
             val responseText = response.bodyAsText()
@@ -465,11 +464,10 @@ class SupabaseApiClient {
             log.d("获取观看历史统计: timeRange=$timeRange")
             
             val response = functions.invoke(
-                function = "watch_history?action=statistics&timeRange=$timeRange",
-                headers = io.ktor.http.Headers.build {
-                    append("Method", "GET")
-                }
-            )
+                "watch_history?action=statistics&timeRange=$timeRange"
+            ) {
+                this.method = io.ktor.http.HttpMethod.Get
+            }
             
             // 检查响应是否为空
             val responseText = response.bodyAsText()
