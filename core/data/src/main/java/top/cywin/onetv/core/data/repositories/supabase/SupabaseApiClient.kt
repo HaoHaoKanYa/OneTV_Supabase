@@ -17,6 +17,10 @@ import io.ktor.http.HttpMethod
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
+import io.ktor.client.*
+import io.ktor.client.request.*
+import io.ktor.client.statement.*
+import io.ktor.http.*
 
 /**
  * Supabase API客户端
@@ -871,6 +875,101 @@ class SupabaseApiClient {
                 put("success", false)
                 put("error", "请求失败: ${e.message}")
             }
+        }
+    }
+
+    /**
+     * 查询当前用户所有会话
+     */
+    suspend fun getUserSessions(userId: String): JsonObject = withContext(Dispatchers.IO) {
+        try {
+            val response = functions.invoke(
+                function = "user-sessions?user_id=$userId",
+                headers = io.ktor.http.Headers.build {
+                    append("Method", "GET")
+                }
+            )
+            return@withContext response.safeBody<JsonObject>()
+        } catch (e: Exception) {
+            log.e("获取用户会话失败", e)
+            throw e
+        }
+    }
+
+    /**
+     * 新增或刷新会话
+     */
+    suspend fun updateUserSession(
+        userId: String,
+        expiresAt: String,
+        deviceInfo: String? = null,
+        ipAddress: String? = null,
+        platform: String? = null,
+        appVersion: String? = null
+    ): JsonObject = withContext(Dispatchers.IO) {
+        try {
+            val requestData = buildJsonObject {
+                put("user_id", userId)
+                put("expires_at", expiresAt)
+                deviceInfo?.let { put("device_info", it) }
+                ipAddress?.let { put("ip_address", it) }
+                platform?.let { put("platform", it) }
+                appVersion?.let { put("app_version", it) }
+            }
+            val response = functions.invoke(
+                function = "user-sessions",
+                body = requestData
+            )
+            return@withContext response.safeBody<JsonObject>()
+        } catch (e: Exception) {
+            log.e("更新用户会话失败", e)
+            throw e
+        }
+    }
+
+    /**
+     * 直接用 HTTP DELETE 方法删除 user_sessions（兼容 Supabase Edge Function）
+     */
+    suspend fun deleteUserSessionHttp(
+        userId: String? = null,
+        id: String? = null,
+        accessToken: String
+    ): Boolean = withContext(Dispatchers.IO) {
+        val url = "https://sjlmgylmcxrapwxjfzhy.supabase.co/functions/v1/user-sessions"
+        val client = HttpClient() // 可替换为全局 client
+        val body = buildJsonObject {
+            userId?.let { put("user_id", it) }
+            id?.let { put("id", it) }
+        }
+        val response = client.request(url) {
+            method = HttpMethod.Delete
+            header("Authorization", "Bearer $accessToken")
+            contentType(ContentType.Application.Json)
+            setBody(body.toString())
+        }
+        return@withContext response.status.value in 200..299
+    }
+
+    /**
+     * 兼容 supabase-kt invoke 的删除会话方法（POST+header方式，部分后端可用）
+     */
+    suspend fun deleteUserSession(id: String? = null, userId: String? = null): JsonObject = withContext(Dispatchers.IO) {
+        try {
+            val requestData = buildJsonObject {
+                id?.let { put("id", it) }
+                userId?.let { put("user_id", it) }
+            }
+            val response = functions.invoke(
+                function = "user-sessions",
+                headers = io.ktor.http.Headers.build {
+                    append("Method", "DELETE")
+                },
+                body = requestData
+            )
+            return@withContext response.safeBody<JsonObject>()
+        } catch (e: Exception) {
+            log.e("删除用户会话失败", e)
+            throw e
         }
     }
 } 

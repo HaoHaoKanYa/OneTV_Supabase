@@ -63,6 +63,8 @@ class SupabaseLoginActivity : ComponentActivity() {
         }
     }
     
+    private var heartbeatJob: kotlinx.coroutines.Job? = null
+    
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
@@ -130,10 +132,33 @@ class SupabaseLoginActivity : ComponentActivity() {
                         try {
                             // 后台获取用户资料
                             val userData = repository.getUserData(accessToken)
+                            // 新增：应用启动时写入/刷新 user_sessions 表，便于后端统计真实在线用户
+                            try {
+                                val apiClient = top.cywin.onetv.core.data.repositories.supabase.SupabaseApiClient()
+                                val userId = userData.userid
+                                val now = java.time.ZonedDateTime.now(java.time.ZoneOffset.UTC)
+                                val expiresAt = now.plusMinutes(30).toString()
+                                val deviceInfo = getDeviceInfo()
+                                val platform = "android"
+                                val appVersion = try {
+                                    packageManager.getPackageInfo(packageName, 0).versionName
+                                } catch (e: Exception) { null }
+                                val sessionResult = apiClient.updateUserSession(
+                                    userId = userId,
+                                    expiresAt = expiresAt,
+                                    deviceInfo = deviceInfo,
+                                    ipAddress = null,
+                                    platform = platform,
+                                    appVersion = appVersion
+                                )
+                                log.i("✅ 应用启动已写入/刷新 user_sessions 会话，后端可统计在线人数")
+                            } catch (e: Exception) {
+                                log.e("❌ 应用启动写入 user_sessions 会话失败: ${e.message}")
+                            }
                             // 使用挂起函数保存用户数据和时间戳
                             withContext(Dispatchers.IO) {
-                            SupabaseSessionManager.saveCachedUserData(this@SupabaseLoginActivity, userData)
-                            SupabaseSessionManager.saveLastLoadedTime(this@SupabaseLoginActivity, System.currentTimeMillis())
+                                SupabaseSessionManager.saveCachedUserData(this@SupabaseLoginActivity, userData)
+                                SupabaseSessionManager.saveLastLoadedTime(this@SupabaseLoginActivity, System.currentTimeMillis())
                             }
                             
                             // 记录登录设备信息
@@ -149,6 +174,18 @@ class SupabaseLoginActivity : ComponentActivity() {
                 }
             } catch (e: Exception) {
                 log.e("后台登录验证失败: ${e.message}", e)
+            }
+        }
+        
+        // 启动心跳Job（如已登录）
+        lifecycleScope.launch {
+            val user = repository.getCurrentUser()
+            if (user != null) {
+                val accessToken = repository.getAccessToken()
+                if (accessToken != null) {
+                    val userData = repository.getUserData(accessToken)
+                    startHeartbeat(userData)
+                }
             }
         }
     }
@@ -243,6 +280,16 @@ class SupabaseLoginActivity : ComponentActivity() {
                     log.i("🧹 开始清除缓存...")
                     mainViewModel.clearAllCache(true) {
                         log.i("✅ 缓存清除完成")
+                        
+                        // 新增：主动删除user_sessions会话
+                        try {
+                            val userId = repository.getCurrentUser()?.id ?: ""
+                            if (userId.isNotBlank()) {
+                                logoutAndClearSessions(userId)
+                            }
+                        } catch (e: Exception) {
+                            log.e("❌ 获取用户ID失败，无法删除user_sessions: ${e.message}")
+                        }
                         
                         // 在清除旧缓存后，通过后台线程安全获取新数据
                         lifecycleScope.launch {
@@ -349,6 +396,31 @@ class SupabaseLoginActivity : ComponentActivity() {
                                                 log.i("💾 VIP状态已同步到缓存")
                                             } catch (e: Exception) {
                                                 log.e("❌ 保存VIP状态到缓存失败: ${e.message}")
+                                            }
+                                            
+                                            // 新增：登录后写入/刷新 user_sessions 表，便于后端统计真实在线用户
+                                            try {
+                                                val apiClient = top.cywin.onetv.core.data.repositories.supabase.SupabaseApiClient()
+                                                val userId = userData.userid
+                                                val now = java.time.ZonedDateTime.now(java.time.ZoneOffset.UTC)
+                                                val expiresAt = now.plusMinutes(30).toString() // ISO8601格式
+                                                val deviceInfo = getDeviceInfo()
+                                                val platform = "android"
+                                                val appVersion = try {
+                                                    packageManager.getPackageInfo(packageName, 0).versionName
+                                                } catch (e: Exception) { null }
+                                                // ipAddress 可选，暂传 null
+                                                val sessionResult = apiClient.updateUserSession(
+                                                    userId = userId,
+                                                    expiresAt = expiresAt,
+                                                    deviceInfo = deviceInfo,
+                                                    ipAddress = null,
+                                                    platform = platform,
+                                                    appVersion = appVersion
+                                                )
+                                                log.i("✅ 已写入/刷新 user_sessions 会话，后端可统计在线人数")
+                                            } catch (e: Exception) {
+                                                log.e("❌ 写入 user_sessions 会话失败: ${e.message}")
                                             }
                                             
                                             // 初始化观看历史
@@ -508,6 +580,72 @@ class SupabaseLoginActivity : ComponentActivity() {
         }
         
         return 0
+    }
+    
+    override fun onDestroy() {
+        super.onDestroy()
+        // 取消心跳Job
+        heartbeatJob?.cancel()
+    }
+
+    private fun startHeartbeat(userData: top.cywin.onetv.core.data.repositories.supabase.SupabaseUserDataIptv) {
+        heartbeatJob?.cancel()
+        heartbeatJob = lifecycleScope.launch {
+            while (true) {
+                try {
+                    val apiClient = top.cywin.onetv.core.data.repositories.supabase.SupabaseApiClient()
+                    val userId = userData.userid
+                    val now = java.time.ZonedDateTime.now(java.time.ZoneOffset.UTC)
+                    val expiresAt = now.plusMinutes(30).toString()
+                    val deviceInfo = getDeviceInfo()
+                    val platform = "android"
+                    val appVersion = try {
+                        packageManager.getPackageInfo(packageName, 0).versionName
+                    } catch (e: Exception) { null }
+                    apiClient.updateUserSession(
+                        userId = userId,
+                        expiresAt = expiresAt,
+                        deviceInfo = deviceInfo,
+                        ipAddress = null,
+                        platform = platform,
+                        appVersion = appVersion
+                    )
+                    log.i("[心跳] 已刷新 user_sessions 会话，后端可统计在线人数")
+                } catch (e: Exception) {
+                    log.e("[心跳] 刷新 user_sessions 会话失败: ${e.message}")
+                }
+                kotlinx.coroutines.delay(5 * 60 * 1000) // 5分钟
+            }
+        }
+    }
+    
+    // 在MainViewModel.clearAllCache回调或其它登出流程后，主动删除user_sessions会话
+    private fun logoutAndClearSessions(userId: String) {
+        // 取消心跳Job
+        heartbeatJob?.cancel()
+        lifecycleScope.launch {
+            try {
+                val apiClient = top.cywin.onetv.core.data.repositories.supabase.SupabaseApiClient()
+                val accessToken = repository.getAccessToken()
+                var deleted = false
+                if (accessToken != null) {
+                    // 优先用 HTTP DELETE 真正删除
+                    deleted = apiClient.deleteUserSessionHttp(userId = userId, accessToken = accessToken)
+                    if (deleted) {
+                        log.i("✅ 已用 HTTP DELETE 成功删除 user_sessions 会话")
+                    } else {
+                        log.e("❌ HTTP DELETE 删除 user_sessions 会话失败，尝试 supabase-kt 兼容方式")
+                    }
+                }
+                if (!deleted) {
+                    // 兜底：兼容 supabase-kt 方式
+                    val result = apiClient.deleteUserSession(userId = userId)
+                    log.i("✅ 已用 supabase-kt 兼容方式删除 user_sessions 会话: $result")
+                }
+            } catch (e: Exception) {
+                log.e("❌ 删除 user_sessions 会话失败: ${e.message}")
+            }
+        }
     }
     
     companion object {
