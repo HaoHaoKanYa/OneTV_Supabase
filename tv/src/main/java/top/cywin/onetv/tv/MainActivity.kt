@@ -61,10 +61,15 @@ import androidx.lifecycle.lifecycleScope
 import top.cywin.onetv.core.data.repositories.supabase.SupabaseUserDataIptv
 import top.cywin.onetv.core.data.repositories.supabase.cache.SupabaseCacheKey
 import top.cywin.onetv.tv.supabase.SupabaseCacheManager
+import top.cywin.onetv.core.data.repositories.supabase.SupabaseApiClient
+import top.cywin.onetv.core.data.repositories.supabase.SupabaseRepository
+import kotlinx.coroutines.Job
+
 
 class MainActivity : ComponentActivity() {
     private val TAG = "MainActivity"
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private var heartbeatJob: Job? = null
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -134,7 +139,7 @@ class MainActivity : ComponentActivity() {
                     SupabaseCacheManager.preheatCache(applicationContext)
                     Log.d(TAG, "应用缓存预热完成")
                     
-                    // 如果用户已登录，预热用户缓存
+                    // 如果用户已登录，预热用户缓存并启动心跳
                     val session = SupabaseCacheManager.getCache<String>(applicationContext, SupabaseCacheKey.SESSION)
                     if (!session.isNullOrEmpty()) {
                         val userData = SupabaseCacheManager.getCache<SupabaseUserDataIptv>(applicationContext, SupabaseCacheKey.USER_DATA)
@@ -142,6 +147,9 @@ class MainActivity : ComponentActivity() {
                             Log.d(TAG, "检测到已登录用户，开始预热用户缓存...")
                             SupabaseCacheManager.preheatUserCache(applicationContext, userData.userid)
                             Log.d(TAG, "用户缓存预热完成")
+
+                            // 启动用户会话心跳机制
+                            startUserSessionHeartbeat(userData)
                         }
                     }
                 } catch (e: Exception) {
@@ -194,7 +202,11 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         Log.d(TAG, "MainActivity onDestroy 被调用")
         super.onDestroy()
-        
+
+        // 停止用户会话心跳
+        heartbeatJob?.cancel()
+        Log.d(TAG, "用户会话心跳已停止")
+
         // 先调用观看历史跟踪器的onAppExit方法，保存当前正在观看的频道
         val tracker = SupabaseVideoPlayerWatchHistoryTracker.getInstance()
         if (tracker != null) {
@@ -214,6 +226,54 @@ class MainActivity : ComponentActivity() {
             } catch (e: Exception) {
                 Log.e(TAG, "应用销毁时同步观看历史失败", e)
             }
+        }
+    }
+
+    /**
+     * 启动用户会话心跳机制
+     * 每5分钟更新一次用户会话，确保在线状态正确统计
+     */
+    private fun startUserSessionHeartbeat(userData: SupabaseUserDataIptv) {
+        heartbeatJob?.cancel()
+        heartbeatJob = lifecycleScope.launch {
+            while (true) {
+                try {
+                    val apiClient = SupabaseApiClient()
+                    val userId = userData.userid
+                    val now = java.time.ZonedDateTime.now(java.time.ZoneOffset.UTC)
+                    val expiresAt = now.plusMinutes(30).toString()
+                    val deviceInfo = getDeviceInfo()
+                    val platform = "android"
+                    val appVersion = try {
+                        packageManager.getPackageInfo(packageName, 0).versionName
+                    } catch (e: Exception) { null }
+
+                    apiClient.updateUserSession(
+                        userId = userId,
+                        expiresAt = expiresAt,
+                        deviceInfo = deviceInfo,
+                        ipAddress = null,
+                        platform = platform,
+                        appVersion = appVersion
+                    )
+                    Log.d(TAG, "[心跳] 已刷新用户会话，保持在线状态")
+                } catch (e: Exception) {
+                    Log.e(TAG, "[心跳] 刷新用户会话失败: ${e.message}")
+                }
+                kotlinx.coroutines.delay(5 * 60 * 1000) // 5分钟
+            }
+        }
+        Log.d(TAG, "用户会话心跳已启动，每5分钟更新一次")
+    }
+
+    /**
+     * 获取设备信息
+     */
+    private fun getDeviceInfo(): String {
+        return try {
+            "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}"
+        } catch (e: Exception) {
+            "Unknown Device"
         }
     }
 }

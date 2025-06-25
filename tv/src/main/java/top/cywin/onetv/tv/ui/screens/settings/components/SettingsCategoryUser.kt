@@ -25,6 +25,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -205,11 +206,11 @@ fun SettingsCategoryUser(
         if (session != null && userData == null) {
             withContext(Dispatchers.IO) {
                 try {
-                        Log.d("SettingsCategoryUser", "开始从服务器获取用户数据...")
+                    Log.d("SettingsCategoryUser", "开始从服务器获取用户数据...")
                     val userRepo = SupabaseUserRepository()
                     val freshData = userRepo.getUserData(session!!)
-                        
-                        Log.d("SettingsCategoryUser", "服务器数据获取成功，类型：${freshData.javaClass.name}")
+
+                    Log.d("SettingsCategoryUser", "服务器数据获取成功，类型：${freshData.javaClass.name}")
                     
                     // 保存到缓存
                     SupabaseCacheManager.saveCache(
@@ -922,11 +923,13 @@ private fun ServerInfoBox(
         }
     }
 
-    // 增强版定时刷新逻辑
-    LaunchedEffect(Unit) {
+    // 增强版定时刷新逻辑 - 使用DisposableEffect避免LeftCompositionCancellationException
+    val coroutineScope = rememberCoroutineScope()
+
+    DisposableEffect(Unit) {
         // 整点同步
         // 启动双重定时器
-        launch(Dispatchers.IO) { // 整点同步
+        val job1 = coroutineScope.launch(Dispatchers.IO) { // 整点同步
             var attemptCount = 0
             while (true) {
                 try {
@@ -987,17 +990,19 @@ private fun ServerInfoBox(
             }
         }
 
-        // 10分钟保障刷新
-        launch(Dispatchers.IO) { // 10分钟保障
+        // 10分钟定时器
+        val job2 = coroutineScope.launch(Dispatchers.IO) {
             while (true) {
                 try {
+                    delay(10L * 60 * 1000) // 10分钟
                     Log.d("SettingsCategoryUser", "[定时刷新] 每10分钟更新...")
+
                     val newData = onlineManager.getCachedData()
                     Log.d(
                         "SettingsCategoryUser",
                         """
-                        [定时刷新结果] 
-                        total=${newData.total} 
+                        [定时刷新结果]
+                        total=${newData.total}
                         base=${newData.base}
                         real=${newData.real}
                         """.trimIndent()
@@ -1007,10 +1012,22 @@ private fun ServerInfoBox(
                         displayData = newData
                     }
                 } catch (e: Exception) {
-                    Log.e("SettingsCategoryUser", "定时刷新失败", e)
+                    Log.e(
+                        "SettingsCategoryUser",
+                        """
+                        [同步异常]
+                        错误类型：${e::class.simpleName}
+                        错误信息：${e.message}
+                        """.trimIndent(),
+                        e
+                    )
                 }
-                delay(10L * 60 * 1000) // 添加L后缀明确为Long类型
             }
+        }
+
+        onDispose {
+            job1.cancel()
+            job2.cancel()
         }
     }
 

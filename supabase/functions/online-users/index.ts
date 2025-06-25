@@ -111,10 +111,13 @@ interface OnlineUsersData {
 async function calculateOnlineUsers(supabaseClient: any): Promise<OnlineUsersData> {
   try {
     // 1. 获取真实在线注册用户数（从数据库查询活跃用户会话）
+    const currentTime = new Date().toISOString();
+    console.log('[DEBUG] 当前时间:', currentTime);
+
     const { data: activeSessions, error: sessionError } = await supabaseClient
       .from('user_sessions')
-      .select('id')
-      .gt('expires_at', new Date().toISOString());
+      .select('id, user_id, expires_at, created_at, device_info')
+      .gt('expires_at', currentTime);
 
     if (sessionError) {
       console.error('Error fetching active sessions:', sessionError);
@@ -122,6 +125,34 @@ async function calculateOnlineUsers(supabaseClient: any): Promise<OnlineUsersDat
     }
 
     const realUsers = activeSessions?.length || 0;
+
+    // 添加调试日志
+    console.log('[DEBUG] 查询活跃会话:');
+    console.log('- 查询条件: expires_at >', currentTime);
+    console.log('- 找到会话数:', realUsers);
+    if (activeSessions && activeSessions.length > 0) {
+      console.log('- 活跃会话详情:');
+      activeSessions.forEach((session, index) => {
+        console.log(`  ${index + 1}. user_id: ${session.user_id}, expires_at: ${session.expires_at}, device: ${session.device_info}`);
+      });
+    } else {
+      console.log('- 没有找到活跃会话');
+
+      // 查询所有会话进行调试
+      const { data: allSessions } = await supabaseClient
+        .from('user_sessions')
+        .select('id, user_id, expires_at, created_at, device_info')
+        .order('created_at', { ascending: false })
+        .limit(5);
+
+      if (allSessions && allSessions.length > 0) {
+        console.log('- 最近5个会话（用于调试）:');
+        allSessions.forEach((session, index) => {
+          const isExpired = new Date(session.expires_at) <= new Date(currentTime);
+          console.log(`  ${index + 1}. user_id: ${session.user_id}, expires_at: ${session.expires_at}, expired: ${isExpired}, device: ${session.device_info}`);
+        });
+      }
+    }
 
     // 2. 获取当前北京时间（UTC+8）
     const now = new Date(Date.now() + 8 * 3600 * 1000);

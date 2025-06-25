@@ -36,6 +36,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -63,6 +64,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.DisposableEffect
 import kotlinx.serialization.Serializable
+import top.cywin.onetv.core.data.repositories.supabase.cache.SupabaseCacheKey
 
 /**
  * 观看历史界面
@@ -104,9 +106,26 @@ fun SupabaseWatchHistory(
     LaunchedEffect(Unit) {
         Log.d("SupabaseWatchHistory", "初始化观看历史会话管理器")
         SupabaseWatchHistorySessionManager.initialize(context)
-        
+
         // 初始化后立即刷新一次数据
         refreshTrigger += 1
+    }
+
+    // 监听观看历史数据变化
+    LaunchedEffect(Unit) {
+        // 每5秒检查一次数据是否有更新
+        while (true) {
+            delay(5000)
+            val lastLoadedTime = SupabaseCacheManager.getCache<Long>(context, SupabaseCacheKey.WATCH_HISTORY_LAST_LOADED) ?: 0L
+            val currentTime = System.currentTimeMillis()
+
+            // 如果数据在最近10秒内更新过，触发UI刷新
+            if (currentTime - lastLoadedTime < 10000) {
+                Log.d("SupabaseWatchHistory", "检测到观看历史数据更新，触发UI刷新")
+                refreshTrigger += 1
+                delay(10000) // 避免频繁刷新，等待10秒再检查
+            }
+        }
     }
     
     // 加载第一页观看历史
@@ -269,14 +288,15 @@ fun SupabaseWatchHistory(
             }
     }
     
-    // 当组件被销毁时，同步数据到服务器
-    DisposableEffect(Unit) {
-        onDispose {
-            scope.launch {
-                SupabaseWatchHistorySyncService.syncToServer(context)
-            }
-        }
-    }
+    // 注意：根据项目设定，只有在用户退出或应用退出时才上传数据到服务器
+    // 移除组件销毁时的自动上传逻辑，避免频繁上传
+    // DisposableEffect(Unit) {
+    //     onDispose {
+    //         scope.launch {
+    //             SupabaseWatchHistorySyncService.syncToServer(context)
+    //         }
+    //     }
+    // }
 
     Column(
         modifier = Modifier
@@ -1053,14 +1073,17 @@ suspend fun createTestWatchHistory(context: Context): Boolean = withContext(Disp
             delay(100)
         }
         
-        // 尝试同步到服务器
-        try {
-            Log.d("SupabaseWatchHistory", "同步测试记录到服务器")
-            SupabaseWatchHistorySyncService.syncToServer(context)
-        } catch (e: Exception) {
-            Log.e("SupabaseWatchHistory", "同步测试记录到服务器失败", e)
-            // 不影响返回结果
-        }
+        // 注意：根据项目设定，只有在用户退出或应用退出时才上传数据到服务器
+        // 移除测试数据的自动上传，避免污染服务器数据
+        // try {
+        //     Log.d("SupabaseWatchHistory", "同步测试记录到服务器")
+        //     SupabaseWatchHistorySyncService.syncToServer(context)
+        // } catch (e: Exception) {
+        //     Log.e("SupabaseWatchHistory", "同步测试记录到服务器失败", e)
+        //     // 不影响返回结果
+        // }
+
+        Log.d("SupabaseWatchHistory", "测试记录已创建，但根据项目设定不会立即上传到服务器")
         
         return@withContext allSuccess
     } catch (e: Exception) {

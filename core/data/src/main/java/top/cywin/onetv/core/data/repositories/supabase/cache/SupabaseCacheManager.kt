@@ -720,6 +720,9 @@ object SupabaseCacheManager {
                 if (key == SupabaseCacheKey.WATCH_HISTORY && forceServer) {
                     // 仅记录日志，不做任何操作，实际强制拉取由tv层负责
                     Log.d(TAG, "WATCH_HISTORY强制拉取服务器逻辑已移至tv层，由tv层负责")
+                } else if (key == SupabaseCacheKey.USER_VIP_STATUS) {
+                    // 跳过VIP状态缓存预热，避免类型解析错误
+                    Log.d(TAG, "跳过USER_VIP_STATUS缓存预热，避免类型解析错误")
                 } else {
                     getCache<Any>(context, key) // 触发加载到内存缓存
                 }

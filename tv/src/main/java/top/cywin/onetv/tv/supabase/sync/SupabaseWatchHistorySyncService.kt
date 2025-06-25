@@ -260,12 +260,26 @@ object SupabaseWatchHistorySyncService {
     ): Boolean = withContext(Dispatchers.IO) {
         Log.d(TAG, "开始从服务器同步观看历史，最大记录数: $maxRecords")
         
-        // 获取用户ID
+        // 获取用户ID - 尝试多种方式
         val userId = SupabaseSessionManager.getCachedUserData(context)?.userid
+            ?: run {
+                // 如果缓存中没有，尝试从Repository获取
+                try {
+                    val repository = top.cywin.onetv.core.data.repositories.supabase.SupabaseRepository()
+                    val currentUser = repository.getCurrentUser()
+                    currentUser?.id
+                } catch (e: Exception) {
+                    Log.w(TAG, "从Repository获取用户ID失败: ${e.message}")
+                    null
+                }
+            }
+
         if (userId == null) {
-            Log.e(TAG, "同步失败: 未获取到用户ID")
+            Log.e(TAG, "同步失败: 未获取到用户ID，请确保用户已登录")
             return@withContext false
         }
+
+        Log.d(TAG, "获取到用户ID: $userId")
         
         try {
             // 使用SupabaseApiClient的方法
@@ -384,14 +398,13 @@ object SupabaseWatchHistorySyncService {
                 
                 // 通知历史会话管理器重新加载数据
                 SupabaseWatchHistorySessionManager.reloadFromLocal(context)
-                
-                // 如果有本地待同步记录，尝试同步到服务器
+
+                // 注意：根据项目设定，只有在用户退出或应用退出时才上传本地数据到服务器
+                // 这里不应该自动上传本地数据，移除自动上传逻辑
                 if (pendingLocalItems.isNotEmpty()) {
-                    Log.d(TAG, "尝试将 ${pendingLocalItems.size} 条本地记录同步到服务器")
-                    val syncCount = syncToServer(context, pendingLocalItems)
-                    Log.d(TAG, "成功同步 $syncCount 条记录到服务器")
+                    Log.d(TAG, "发现 ${pendingLocalItems.size} 条本地待同步记录，但根据项目设定，只在用户/应用退出时上传")
                 }
-                
+
                 return@withContext true
             } else {
                 Log.d(TAG, "服务器没有新记录需要合并")
@@ -510,13 +523,13 @@ object SupabaseWatchHistorySyncService {
                 return@withContext
             }
             
-            // 2. 再从本地同步到服务器
+            // 2. 根据项目设定，不自动上传本地数据到服务器
             callback.onSyncProgress(2, 3)
-            val syncToCount = syncToServer(context)
-            
+            Log.d(TAG, "根据项目设定，跳过自动上传本地数据到服务器")
+
             // 3. 完成同步
             callback.onSyncProgress(3, 3)
-            callback.onSyncCompleted(syncToCount)
+            callback.onSyncCompleted(0) // 上传数量为0，因为没有自动上传
         } catch (e: Exception) {
             Log.e(TAG, "同步过程中出错", e)
             callback.onSyncFailed(e.message ?: "未知错误")

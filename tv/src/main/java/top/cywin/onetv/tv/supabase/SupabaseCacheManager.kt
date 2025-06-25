@@ -132,8 +132,9 @@ object SupabaseCacheManager {
      * 当用户登录后调用此方法，预加载用户相关的缓存数据
      * @param context 应用上下文
      * @param userId 用户ID
+     * @param forceServer 是否强制从服务器拉取观看历史
      */
-    suspend fun preheatUserCache(context: Context, userId: String) {
-        CoreCacheManager.preheatUserCache(context, userId)
+    suspend fun preheatUserCache(context: Context, userId: String, forceServer: Boolean = false) {
+        CoreCacheManager.preheatUserCache(context, userId, forceServer)
     }
 } 
