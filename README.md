@@ -29,18 +29,6 @@
 
 
 
-项目使用 GitHub Actions 实现自动化构建和发布：
-
-1. 创建新的版本标签（如 `v2.0.1`）
-2. 推送标签触发 `Release` 工作流
-3. 工作流自动构建 APK 并创建 GitHub Release
-4. `Update Release JSON` 工作流自动更新 `tv-stable.json`
-5. 应用内更新系统会检测到新版本并提示用户升级
-
-详细流程请参考 [RELEASE_GUIDE.md](RELEASE_GUIDE.md)
-
-## 📄 相关文档
-
 - [更新日志](CHANGELOG.md) - 详细的版本更新记录
 - [发布指南](RELEASE_GUIDE.md) - 版本发布流程说明
 - [Supabase 配置指南](supabase/README.md) - Supabase 后端配置说明
