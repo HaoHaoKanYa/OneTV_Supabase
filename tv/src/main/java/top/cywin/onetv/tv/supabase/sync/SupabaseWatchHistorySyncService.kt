@@ -62,9 +62,10 @@ object SupabaseWatchHistorySyncService {
     /**
      * 同步本地观看历史到服务器
      * @param context 应用上下文
+     * @param items 待同步的观看历史记录列表，为null时同步所有观看历史记录
      * @return 成功同步的记录数
      */
-    suspend fun syncToServer(context: Context): Int = withContext(Dispatchers.IO) {
+    suspend fun syncToServer(context: Context, items: List<WatchHistoryItem>? = null): Int = withContext(Dispatchers.IO) {
         Log.d(TAG, "开始同步观看历史到服务器")
         
         // 获取用户ID
@@ -86,7 +87,7 @@ object SupabaseWatchHistorySyncService {
         val watchHistoryItems = try {
             // 尝试使用kotlinx.serialization解析
             try {
-            json.decodeFromString<List<WatchHistoryItem>>(historyJson)
+                json.decodeFromString<List<WatchHistoryItem>>(historyJson)
             } catch (e: Exception) {
                 Log.d(TAG, "使用kotlinx.serialization解析失败，尝试使用Gson", e)
                 
@@ -101,7 +102,7 @@ object SupabaseWatchHistorySyncService {
         }
         
         // 找出需要同步的项目（UUID格式的ID，包含"-"）
-        val pendingItems = watchHistoryItems.filter { it.id.contains("-") }
+        val pendingItems = items ?: watchHistoryItems.filter { it.id.contains("-") }
         
         if (pendingItems.isEmpty()) {
             Log.d(TAG, "没有需要同步的观看历史记录")
@@ -165,10 +166,10 @@ object SupabaseWatchHistorySyncService {
         // 准备批量同步数据
         val batchData = pendingItems.map { item ->
             mapOf(
-                "channel_name" to item.channelName,
-                "channel_url" to item.channelUrl,
-                "duration" to item.duration.toString(),
-                "watch_start" to item.watchStart
+                "channelName" to item.channelName,
+                "channelUrl" to item.channelUrl,
+                "duration" to item.duration,
+                "watchStart" to item.watchStart
             )
         }
         
@@ -348,12 +349,13 @@ object SupabaseWatchHistorySyncService {
             
             // 合并本地和服务器数据
             val localIds = localItems.map { it.id }.toSet()
+            val serverIds = serverItems.map { it.id }.toSet()
             
             // 找出服务器上有但本地没有的记录
             val newServerItems = serverItems.filter { !localIds.contains(it.id) }
             
-            // 找出本地有但可能未同步到服务器的记录（通常是UUID格式的ID，包含"-"）
-            val pendingLocalItems = localItems.filter { it.id.contains("-") }
+            // 找出本地有但可能未同步到服务器的记录（通常是UUID格式的ID，包含"-"），并且服务器没有这些id
+            val pendingLocalItems = localItems.filter { it.id.contains("-") && !serverIds.contains(it.id) }
             
             Log.d(TAG, "本地记录数: ${localItems.size}, 服务器新记录数: ${newServerItems.size}, 本地待同步记录数: ${pendingLocalItems.size}")
             
@@ -383,6 +385,13 @@ object SupabaseWatchHistorySyncService {
                 // 通知历史会话管理器重新加载数据
                 SupabaseWatchHistorySessionManager.reloadFromLocal(context)
                 
+                // 如果有本地待同步记录，尝试同步到服务器
+                if (pendingLocalItems.isNotEmpty()) {
+                    Log.d(TAG, "尝试将 ${pendingLocalItems.size} 条本地记录同步到服务器")
+                    val syncCount = syncToServer(context, pendingLocalItems)
+                    Log.d(TAG, "成功同步 $syncCount 条记录到服务器")
+                }
+                
                 return@withContext true
             } else {
                 Log.d(TAG, "服务器没有新记录需要合并")
@@ -390,7 +399,7 @@ object SupabaseWatchHistorySyncService {
                 // 如果有本地待同步记录，尝试同步到服务器
                 if (pendingLocalItems.isNotEmpty()) {
                     Log.d(TAG, "尝试将 ${pendingLocalItems.size} 条本地记录同步到服务器")
-                    val syncCount = syncToServer(context)
+                    val syncCount = syncToServer(context, pendingLocalItems)
                     Log.d(TAG, "成功同步 $syncCount 条记录到服务器")
                 }
                 
