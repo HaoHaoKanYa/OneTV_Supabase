@@ -29,8 +29,6 @@
 
 
 
-### 环境配置
-
 1. **克隆仓库**
    ```bash
    git clone https://github.com/HaoHaoKanYa/OneTV_Supabase.git
