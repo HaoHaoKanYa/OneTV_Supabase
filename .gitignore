@@ -181,3 +181,11 @@ iptv-V1-supabase.js
 /screenshots/
 /email_accounts.csv
 /gradle-8.7-bin.zip
+
+# 新增的Supabase文档文件
+SupabaseCacheCompatibilityGuide.md
+SupabaseCacheImplementationGuide.md
+SupabaseCacheImplementationStatus_v1.md
+SupabaseCacheOptimizationCompletionReport.md
+SupabaseCacheOptimizationPlan.md
+SupabaseWatchHistorySyncServiceGuide.md
