@@ -69,7 +69,8 @@ object SupabaseCacheManager {
         SupabaseCacheKey.USER_DATA,
         SupabaseCacheKey.USER_PROFILE,
         SupabaseCacheKey.USER_SETTINGS,
-        SupabaseCacheKey.SERVICE_INFO
+        SupabaseCacheKey.SERVICE_INFO,
+        SupabaseCacheKey.WATCH_HISTORY
     )
     
     init {
@@ -709,19 +710,32 @@ object SupabaseCacheManager {
      * 当用户登录后调用此方法，预加载用户相关的缓存数据
      * @param context 应用上下文
      * @param userId 用户ID
+     * @param forceServer 是否强制从服务器拉取观看历史
      */
-    suspend fun preheatUserCache(context: Context, userId: String) = withContext(Dispatchers.IO) {
-        Log.d(TAG, "开始预热用户缓存 | 用户ID：$userId")
-        
+    suspend fun preheatUserCache(context: Context, userId: String, forceServer: Boolean = false) = withContext(Dispatchers.IO) {
+        Log.d(TAG, "开始预热用户缓存 | 用户ID：$userId, forceServer=$forceServer")
         val userKeys = SupabaseCacheKey.getUserRelatedKeys()
         for (key in userKeys) {
             try {
-                getCache<Any>(context, key) // 触发加载到内存缓存
+                if (key == SupabaseCacheKey.WATCH_HISTORY && forceServer) {
+                    // 强制从服务器拉取观看历史
+                    Log.d(TAG, "强制从服务器拉取观看历史数据")
+                    try {
+                        val syncServiceClass = Class.forName("top.cywin.onetv.tv.supabase.sync.SupabaseWatchHistorySyncService")
+                        val syncFromServerMethod = syncServiceClass.getDeclaredMethod("syncFromServer", Context::class.java, Int::class.java)
+                        syncFromServerMethod.isAccessible = true
+                        // 拉取200条
+                        syncFromServerMethod.invoke(null, context, 200)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "强制拉取服务器观看历史失败", e)
+                    }
+                } else {
+                    getCache<Any>(context, key) // 触发加载到内存缓存
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "用户缓存预热失败 | 键：${key.name}", e)
             }
         }
-        
         Log.d(TAG, "用户缓存预热完成")
     }
 } 

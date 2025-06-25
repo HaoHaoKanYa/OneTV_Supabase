@@ -260,6 +260,17 @@ class SupabaseLoginActivity : ComponentActivity() {
                                     val userData = repository.getUserData(accessToken)
                                     log.i("✅ 用户资料获取成功")
                                     
+                                    // 新增：登录后强制预热用户缓存（包括强制拉取服务器观看历史）
+                                    try {
+                                        log.i("🔥 正在预热用户缓存并强制拉取服务器观看历史...")
+                                        withContext(Dispatchers.IO) {
+                                            SupabaseCacheManager.preheatUserCache(this@SupabaseLoginActivity, userData.userid, true)
+                                        }
+                                        log.i("🔥 用户缓存预热完成")
+                                    } catch (e: Exception) {
+                                        log.e("❌ 预热用户缓存失败: ${e.message}")
+                                    }
+                                    
                                     lifecycleScope.launch(Dispatchers.IO) {
                                         try {
                                             // 确保保存正确类型的对象
