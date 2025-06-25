@@ -27,6 +27,16 @@ import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
 import android.util.Log
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import top.cywin.onetv.core.data.repositories.supabase.cache.SupabaseCacheKey
+import top.cywin.onetv.core.data.repositories.supabase.cache.SupabaseCacheManager
 
 /**
  * 用户详细资料界面
@@ -39,13 +49,83 @@ fun SupabaseUserProfileInfo(
     userData: SupabaseUserDataIptv?,
     isLoading: Boolean
 ) {
+    val context = LocalContext.current
+    var cachedUserData by remember { mutableStateOf<SupabaseUserDataIptv?>(null) }
+    var localIsLoading by remember { mutableStateOf(isLoading) }
+    
+    // 如果传入的userData为null，尝试从缓存中获取用户数据
+    LaunchedEffect(userData) {
+        if (userData == null) {
+            localIsLoading = true
+            try {
+                withContext(Dispatchers.IO) {
+                    // 首先尝试获取任意类型的数据，避免直接类型转换
+                    val anyData = SupabaseCacheManager.getCache<Any>(
+                        context,
+                        SupabaseCacheKey.USER_DATA
+                    )
+                    
+                    // 使用安全转换方法处理数据
+                    if (anyData != null) {
+                        val convertedData = SupabaseCacheManager.safeConvertToUserData(anyData)
+                        if (convertedData != null) {
+                            Log.d("SupabaseUserProfile", "从缓存加载用户数据成功: ${convertedData.username} (${convertedData.userid})")
+                            cachedUserData = convertedData
+                        } else {
+                            Log.d("SupabaseUserProfile", "缓存数据转换失败")
+                        }
+                    } else {
+                        Log.d("SupabaseUserProfile", "缓存中未找到用户数据")
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("SupabaseUserProfile", "从缓存加载用户数据失败: ${e.message}", e)
+            }
+            localIsLoading = false
+        }
+    }
+    
+    // 使用传入的userData或从缓存中获取的userData
+    val effectiveUserData = userData ?: cachedUserData
+    
+    // 添加日志记录
+    LaunchedEffect(effectiveUserData) {
+        if (effectiveUserData != null) {
+            Log.d("SupabaseUserProfile", "显示用户资料: ${effectiveUserData.username} (${effectiveUserData.userid})")
+        } else {
+            Log.d("SupabaseUserProfile", "未获取到用户资料数据")
+        }
+    }
+    
+    // 添加状态变量跟踪错误
+    var hasError by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf("") }
+    
+    // 使用Effect处理数据验证，而不是直接在UI中使用try-catch
+    if (effectiveUserData != null) {
+        LaunchedEffect(effectiveUserData) {
+            try {
+                // 验证数据的可用性，如果有问题会抛出异常
+                effectiveUserData.username
+                effectiveUserData.userid
+                // 验证成功，重置错误状态
+                hasError = false
+            } catch (e: Exception) {
+                // 捕获并记录错误
+                Log.e("SupabaseUserProfile", "数据验证异常: ${e.message}", e)
+                hasError = true
+                errorMessage = "加载用户资料时出现错误: ${e.message}"
+            }
+        }
+    }
+    
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState()),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        if (isLoading) {
+        if (localIsLoading) {
             // 加载中状态
             CircularProgressIndicator(
                 modifier = Modifier
@@ -58,7 +138,7 @@ fun SupabaseUserProfileInfo(
                 color = Color.White,
                 modifier = Modifier.padding(16.dp)
             )
-        } else if (userData == null) {
+        } else if (effectiveUserData == null) {
             // 无数据状态
             Text(
                 text = "点击\"前往登录\"标签可进入登录界面，登录个人账号后获取用户数据",
@@ -67,16 +147,23 @@ fun SupabaseUserProfileInfo(
                 textAlign = TextAlign.Center,
                 modifier = Modifier.padding(16.dp)
             )
+        } else if (hasError) {
+            // 错误状态
+            Text(
+                text = "加载用户资料时出现错误，请稍后再试",
+                color = Color(0xFFF44336),
+                fontSize = 18.sp,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(16.dp)
+            )
         } else {
-            // 删除多余的"账户详细资料"标题
-            
             // 用户基本信息
             ProfileInfoSection(title = "基本信息") {
-                UserProfileInfoRow(label = "用户名", value = userData.username)
-                UserProfileInfoRow(label = "用户ID", value = userData.userid)
-                UserProfileInfoRow(label = "注册邮箱", value = userData.email ?: "未设置")
-                UserProfileInfoRow(label = "账户状态", value = userData.accountstatus ?: "正常")
-                UserProfileInfoRow(label = "注册时间", value = formatUserDateTime(userData.created_at))
+                UserProfileInfoRow(label = "用户名", value = effectiveUserData.username)
+                UserProfileInfoRow(label = "用户ID", value = effectiveUserData.userid)
+                UserProfileInfoRow(label = "注册邮箱", value = effectiveUserData.email ?: "未设置")
+                UserProfileInfoRow(label = "账户状态", value = effectiveUserData.accountstatus ?: "正常")
+                UserProfileInfoRow(label = "注册时间", value = formatUserDateTime(effectiveUserData.created_at))
             }
             
             Spacer(modifier = Modifier.height(16.dp))
@@ -85,16 +172,16 @@ fun SupabaseUserProfileInfo(
             ProfileInfoSection(title = "VIP状态") {
                 UserProfileInfoRow(
                     label = "VIP状态", 
-                    value = if (userData.is_vip) "VIP用户" else "普通用户",
-                    valueColor = if (userData.is_vip) Color(0xFFFFD700) else Color.LightGray
+                    value = if (effectiveUserData.is_vip) "VIP用户" else "普通用户",
+                    valueColor = if (effectiveUserData.is_vip) Color(0xFFFFD700) else Color.LightGray
                 )
                 
-                if (userData.is_vip) {
-                    UserProfileInfoRow(label = "开始时间", value = formatUserDateTime(userData.vipstart))
-                    UserProfileInfoRow(label = "到期时间", value = formatUserDateTime(userData.vipend))
+                if (effectiveUserData.is_vip) {
+                    UserProfileInfoRow(label = "开始时间", value = formatUserDateTime(effectiveUserData.vipstart))
+                    UserProfileInfoRow(label = "到期时间", value = formatUserDateTime(effectiveUserData.vipend))
                     
                     // 计算剩余天数
-                    val remainingDays = calculateRemainingDays(userData.vipend)
+                    val remainingDays = calculateRemainingDays(effectiveUserData.vipend)
                     UserProfileInfoRow(
                         label = "剩余时间", 
                         value = "$remainingDays 天",
@@ -111,8 +198,8 @@ fun SupabaseUserProfileInfo(
             
             // 登录信息
             ProfileInfoSection(title = "登录信息") {
-                UserProfileInfoRow(label = "最后登录时间", value = formatUserDateTime(userData.lastlogintime))
-                UserProfileInfoRow(label = "最后登录设备", value = userData.lastlogindevice ?: "未记录")
+                UserProfileInfoRow(label = "最后登录时间", value = formatUserDateTime(effectiveUserData.lastlogintime))
+                UserProfileInfoRow(label = "最后登录设备", value = effectiveUserData.lastlogindevice ?: "未记录")
             }
         }
     }

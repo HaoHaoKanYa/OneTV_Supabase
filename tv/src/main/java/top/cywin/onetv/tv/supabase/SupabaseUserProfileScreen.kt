@@ -61,6 +61,7 @@ import top.cywin.onetv.core.data.repositories.supabase.SupabaseSessionManager
 import top.cywin.onetv.core.data.repositories.supabase.SupabaseUserDataIptv
 import top.cywin.onetv.core.data.repositories.supabase.SupabaseUserRepository
 import top.cywin.onetv.core.data.repositories.supabase.cache.SupabaseCacheKey
+import top.cywin.onetv.core.data.repositories.supabase.cache.SupabaseCacheManager as CoreCacheManager
 import top.cywin.onetv.tv.supabase.SupabaseCacheManager
 
 /**
@@ -115,11 +116,18 @@ fun SupabaseUserProfileScreen(
             
             // 使用IO线程加载所有缓存和网络数据
             withContext(Dispatchers.IO) {
-                // 先尝试从USER_DATA缓存加载
-                val userDataFromCache = SupabaseCacheManager.getCache<SupabaseUserDataIptv>(context, SupabaseCacheKey.USER_DATA)
+                // 先尝试从USER_DATA缓存加载，使用Any类型避免直接类型转换
+                val userDataRaw = CoreCacheManager.getCache<Any>(context, SupabaseCacheKey.USER_DATA)
+                
+                // 使用安全的转换方法处理数据
+                val userDataFromCache = if (userDataRaw != null) {
+                    CoreCacheManager.safeConvertToUserData(userDataRaw)
+                } else {
+                    null
+                }
                 
                 // 如果USER_DATA缓存有效，直接使用
-                if (userDataFromCache != null && SupabaseCacheManager.isValid(context, SupabaseCacheKey.USER_DATA)) {
+                if (userDataFromCache != null && CoreCacheManager.isValid(context, SupabaseCacheKey.USER_DATA)) {
                     Log.d("UserProfile", "使用主缓存的用户数据: ${userDataFromCache.username}")
                     
                     // 切换到主线程更新UI状态
@@ -135,7 +143,7 @@ fun SupabaseUserProfileScreen(
                             val freshData = SupabaseUserRepository().getUserData(sessionStr)
                             
                             // 保存到主缓存
-                            SupabaseCacheManager.saveCache(
+                            CoreCacheManager.saveCache(
                                 context = context,
                                 key = SupabaseCacheKey.USER_DATA,
                                 data = freshData
@@ -154,7 +162,10 @@ fun SupabaseUserProfileScreen(
                         } catch (e: Exception) {
                             Log.e("UserProfile", "从服务器获取用户数据失败", e)
                             // 如果从服务器获取失败但有缓存，仍然尝试使用缓存
-                            val cachedData = SupabaseCacheManager.getCache<SupabaseUserDataIptv>(context, SupabaseCacheKey.USER_DATA)
+                            // 使用Any类型和安全转换方法
+                            val cachedDataRaw = CoreCacheManager.getCache<Any>(context, SupabaseCacheKey.USER_DATA)
+                            val cachedData = CoreCacheManager.safeConvertToUserData(cachedDataRaw)
+                            
                             if (cachedData != null) {
                                 // 切换到主线程更新UI状态
                                 withContext(Dispatchers.Main) {

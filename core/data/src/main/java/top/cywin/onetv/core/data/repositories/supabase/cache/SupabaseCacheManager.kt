@@ -170,9 +170,14 @@ object SupabaseCacheManager {
                 if (key == SupabaseCacheKey.USER_DATA) {
                     try {
                         Log.d(TAG, "处理USER_DATA类型，使用明确类型反序列化")
-                        // 使用明确的类型反序列化，避免LinkedTreeMap转换问题
-                        val userData = Gson().fromJson(json, SupabaseUserDataIptv::class.java)
                         
+                        // 尝试解析成任意类型
+                        val anyData = Gson().fromJson<Any>(json, Any::class.java)
+                        
+                        // 使用安全转换方法
+                        val userData = safeConvertToUserData(anyData)
+                        
+                        if (userData != null) {
                         // 检查数据有效性
                         val config = cacheConfigs[key] ?: SupabaseCacheConfig.DEFAULT
                         val strategy = config.toStrategy()
@@ -191,6 +196,9 @@ object SupabaseCacheManager {
                             return@withContext userData as T
                         } else {
                             Log.d(TAG, "USER_DATA缓存已过期")
+                            }
+                        } else {
+                            Log.e(TAG, "USER_DATA转换失败，无法获取有效的用户数据")
                         }
                     } catch (e: Exception) {
                         Log.e(TAG, "USER_DATA反序列化失败: ${e.message}", e)
@@ -204,9 +212,33 @@ object SupabaseCacheManager {
                 }
                 
                 // 特殊处理WATCH_HISTORY类型，修复类型不匹配问题
-                if (key == SupabaseCacheKey.WATCH_HISTORY && json.startsWith("[")) {
+                if (key == SupabaseCacheKey.WATCH_HISTORY) {
                     try {
-                        Log.d(TAG, "处理WATCH_HISTORY类型，检测到数组JSON格式")
+                        Log.d(TAG, "处理WATCH_HISTORY类型，使用String类型存储")
+                        
+                        if (defaultValue is String || defaultValue == null) {
+                            // 直接返回原始JSON字符串，不进行解析
+                            Log.d(TAG, "WATCH_HISTORY直接返回JSON字符串，不进行解析")
+                            
+                            // 检查数据有效性
+                            val config = cacheConfigs[key] ?: SupabaseCacheConfig.DEFAULT
+                            val strategy = config.toStrategy()
+                            
+                            // 更新内存缓存，存储原始字符串
+                            synchronized(memoryCache) {
+                                memoryCache[cacheKey] = SupabaseCacheEntry(
+                                    data = json as Any,
+                                    createTime = createTime,
+                                    strategy = strategy
+                                )
+                            }
+                            
+                            Log.d(TAG, "WATCH_HISTORY成功加载为字符串 | 长度: ${json.length}")
+                            return@withContext json as T
+                        } else {
+                            // 如果请求的不是String类型，尝试进行适当的解析
+                            Log.d(TAG, "处理WATCH_HISTORY类型，检测到非字符串请求格式")
+                            
                         // 检测到是JSON数组格式，使用Type Token处理
                         val type = object : TypeToken<List<Map<String, Any>>>() {}.type
                         val watchHistoryData = Gson().fromJson<Any>(json, type)
@@ -225,13 +257,14 @@ object SupabaseCacheManager {
                             synchronized(memoryCache) {
                                 memoryCache[cacheKey] = entry as SupabaseCacheEntry<Any>
                             }
-                            Log.d(TAG, "WATCH_HISTORY反序列化成功 | 是数组格式")
+                                Log.d(TAG, "WATCH_HISTORY反序列化成功 | 是对象格式")
                             return@withContext watchHistoryData as T
                         } else {
                             Log.d(TAG, "WATCH_HISTORY缓存已过期")
+                            }
                         }
                     } catch (e: Exception) {
-                        Log.e(TAG, "WATCH_HISTORY反序列化失败: ${e.message}", e)
+                        Log.e(TAG, "WATCH_HISTORY处理失败: ${e.message}", e)
                         // 清除无效缓存
                         prefs.edit()
                             .remove(key.keyName)
@@ -440,7 +473,47 @@ object SupabaseCacheManager {
     }
     
     /**
-     * 根据用户类型获取缓存策略
+     * 安全地将任何缓存对象转换为SupabaseUserDataIptv类型
+     * 处理LinkedTreeMap到SupabaseUserDataIptv的转换问题
+     * 
+     * @param data 任何类型的数据对象
+     * @return 转换后的SupabaseUserDataIptv对象，如果转换失败则返回null
+     */
+    fun safeConvertToUserData(data: Any?): SupabaseUserDataIptv? {
+        if (data == null) return null
+        
+        return try {
+            when (data) {
+                is SupabaseUserDataIptv -> {
+                    Log.d(TAG, "数据已经是SupabaseUserDataIptv类型，无需转换")
+                    data
+                }
+                is Map<*, *> -> {
+                    Log.d(TAG, "检测到Map类型（可能是LinkedTreeMap），转换为SupabaseUserDataIptv")
+                    val gson = Gson()
+                    val json = gson.toJson(data)
+                    gson.fromJson(json, SupabaseUserDataIptv::class.java)
+                }
+                else -> {
+                    Log.w(TAG, "未知数据类型: ${data.javaClass.name}，尝试强制转换")
+                    try {
+                        val gson = Gson()
+                        val json = gson.toJson(data)
+                        gson.fromJson(json, SupabaseUserDataIptv::class.java)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "转换为SupabaseUserDataIptv失败: ${e.message}", e)
+                        null
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "转换数据到SupabaseUserDataIptv时出错: ${e.message}", e)
+            null
+        }
+    }
+    
+    /**
+     * 获取用户数据缓存策略
      * @param userData 用户数据
      * @return 适合该用户的缓存策略
      */

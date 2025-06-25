@@ -260,73 +260,89 @@ class SupabaseLoginActivity : ComponentActivity() {
                                     val userData = repository.getUserData(accessToken)
                                     log.i("✅ 用户资料获取成功")
                                     
-                                    // 保存用户数据到缓存
-                                    withContext(Dispatchers.IO) {
-                                        // 保存到主缓存
-                                        SupabaseSessionManager.saveCachedUserData(this@SupabaseLoginActivity, userData)
-                                        SupabaseSessionManager.saveLastLoadedTime(this@SupabaseLoginActivity, System.currentTimeMillis())
-                                        log.i("💾 用户资料已保存到主缓存")
-                                        
-                                        // 保存原始JSON数据
+                                    lifecycleScope.launch(Dispatchers.IO) {
                                         try {
-                                            val gson = Gson()
-                                            val jsonString = gson.toJson(userData)
+                                            // 确保保存正确类型的对象
                                             SupabaseCacheManager.saveCache(
-                                                context = this@SupabaseLoginActivity,
-                                                key = SupabaseCacheKey.USER_DATA_RAW,
-                                                data = jsonString
+                                                this@SupabaseLoginActivity,
+                                                SupabaseCacheKey.USER_DATA,
+                                                userData,
+                                                // 使用新的getUserCacheStrategy方法
+                                                SupabaseCacheManager.getUserCacheStrategy(userData)
                                             )
-                                            log.i("💾 用户资料已保存为原始JSON格式")
-                                        } catch (e: Exception) {
-                                            log.e("❌ 保存用户资料原始JSON失败: ${e.message}")
-                                        }
-                                        
-                                        // 同步保存到USER_PROFILE缓存
-                                        try {
-                                            SupabaseUserProfileInfoSessionManager.saveUserProfileData(this@SupabaseLoginActivity, userData)
-                                            log.i("💾 用户资料已同步到个人资料缓存")
-                                        } catch (e: Exception) {
-                                            log.e("❌ 保存到个人资料缓存失败: ${e.message}")
-                                        }
-                                        
-                                        // 同步保存到USER_SETTINGS缓存（创建默认设置）
-                                        try {
-                                            val defaultSettings = SupabaseUserSettingsSessionManager.UserSettings(
-                                                userId = userData.userid,
-                                                displayName = userData.username,
-                                                updatedAt = System.currentTimeMillis().toString()
-                                            )
-                                            SupabaseUserSettingsSessionManager.saveUserSettings(this@SupabaseLoginActivity, defaultSettings)
-                                            log.i("💾 默认用户设置已同步到设置缓存")
-                                        } catch (e: Exception) {
-                                            log.e("❌ 保存到用户设置缓存失败: ${e.message}")
-                                        }
-                                        
-                                        // 同步保存VIP状态到缓存
-                                        try {
-                                            val vipStatus = top.cywin.onetv.tv.supabase.VipStatus(
-                                                isVip = userData.is_vip,
-                                                vipStart = userData.vipstart,
-                                                vipEnd = userData.vipend,
-                                                daysRemaining = calculateRemainingDays(userData.vipend)
-                                            )
+                                            
+                                            // 保存最后加载时间
                                             SupabaseCacheManager.saveCache(
-                                                this@SupabaseLoginActivity, 
-                                                SupabaseCacheKey.USER_VIP_STATUS, 
-                                                vipStatus
+                                                this@SupabaseLoginActivity,
+                                                SupabaseCacheKey.LAST_LOADED_TIME,
+                                                System.currentTimeMillis()
                                             )
-                                            log.i("💾 VIP状态已同步到缓存")
+                                            
+                                            log.i("💾 用户资料已保存到主缓存")
+                                            
+                                            // 同时保存为原始JSON，便于调试
+                                            try {
+                                                val gson = Gson()
+                                                val userDataJson = gson.toJson(userData)
+                                                SupabaseCacheManager.saveCache(
+                                                    this@SupabaseLoginActivity,
+                                                    SupabaseCacheKey.USER_DATA_JSON,
+                                                    userDataJson
+                                                )
+                                                log.i("💾 用户资料已保存为原始JSON格式")
+                                            } catch (e: Exception) {
+                                                log.e("❌ 保存用户资料JSON失败: ${e.message}")
+                                            }
+                                            
+                                            // 同步保存到USER_PROFILE缓存
+                                            try {
+                                                SupabaseUserProfileInfoSessionManager.saveUserProfileData(this@SupabaseLoginActivity, userData)
+                                                log.i("💾 用户资料已同步到个人资料缓存")
+                                            } catch (e: Exception) {
+                                                log.e("❌ 保存到个人资料缓存失败: ${e.message}")
+                                            }
+                                            
+                                            // 同步保存到USER_SETTINGS缓存（创建默认设置）
+                                            try {
+                                                val defaultSettings = SupabaseUserSettingsSessionManager.UserSettings(
+                                                    userId = userData.userid,
+                                                    displayName = userData.username,
+                                                    updatedAt = System.currentTimeMillis().toString()
+                                                )
+                                                SupabaseUserSettingsSessionManager.saveUserSettings(this@SupabaseLoginActivity, defaultSettings)
+                                                log.i("💾 默认用户设置已同步到设置缓存")
+                                            } catch (e: Exception) {
+                                                log.e("❌ 保存到用户设置缓存失败: ${e.message}")
+                                            }
+                                            
+                                            // 同步保存VIP状态到缓存
+                                            try {
+                                                val vipStatus = top.cywin.onetv.tv.supabase.VipStatus(
+                                                    isVip = userData.is_vip,
+                                                    vipStart = userData.vipstart,
+                                                    vipEnd = userData.vipend,
+                                                    daysRemaining = calculateRemainingDays(userData.vipend)
+                                                )
+                                                SupabaseCacheManager.saveCache(
+                                                    this@SupabaseLoginActivity, 
+                                                    SupabaseCacheKey.USER_VIP_STATUS, 
+                                                    vipStatus
+                                                )
+                                                log.i("💾 VIP状态已同步到缓存")
+                                            } catch (e: Exception) {
+                                                log.e("❌ 保存VIP状态到缓存失败: ${e.message}")
+                                            }
+                                            
+                                            // 初始化观看历史
+                                            try {
+                                                log.i("🕒 初始化观看历史...")
+                                                SupabaseWatchHistorySessionManager.initializeAsync(this@SupabaseLoginActivity)
+                                                log.i("✅ 观看历史初始化完成")
+                                            } catch (e: Exception) {
+                                                log.e("❌ 初始化观看历史失败: ${e.message}")
+                                            }
                                         } catch (e: Exception) {
-                                            log.e("❌ 保存VIP状态到缓存失败: ${e.message}")
-                                        }
-                                        
-                                        // 初始化观看历史
-                                        try {
-                                            log.i("🕒 初始化观看历史...")
-                                            SupabaseWatchHistorySessionManager.initializeAsync(this@SupabaseLoginActivity)
-                                            log.i("✅ 观看历史初始化完成")
-                                        } catch (e: Exception) {
-                                            log.e("❌ 初始化观看历史失败: ${e.message}")
+                                            log.e("❌ 保存用户资料到缓存失败: ${e.message}")
                                         }
                                     }
                                     log.i("💾 所有用户资料已保存到本地缓存")

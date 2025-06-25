@@ -10,6 +10,8 @@ import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -22,6 +24,8 @@ import top.cywin.onetv.tv.supabase.WatchHistoryItem
 import java.text.SimpleDateFormat
 import java.util.TimeZone
 import java.util.UUID
+import io.ktor.http.Headers
+import io.github.jan.supabase.SupabaseClient
 
 /**
  * Supabase观看历史同步服务
@@ -41,11 +45,18 @@ object SupabaseWatchHistorySyncService {
      * 获取观看历史JSON字符串
      */
     private suspend fun getHistoryJson(context: Context): String? = withContext(Dispatchers.IO) {
-        return@withContext SupabaseCacheManager.getCache<String>(
+        try {
+            val result = SupabaseCacheManager.getCache<String>(
             context, 
             SupabaseCacheKey.WATCH_HISTORY, 
             null
         )
+            Log.d(TAG, "成功获取观看历史JSON: ${result?.substring(0, Math.min(100, result?.length ?: 0))}")
+            return@withContext result
+        } catch (e: Exception) {
+            Log.e(TAG, "获取观看历史JSON失败", e)
+            return@withContext null
+        }
     }
     
     /**
@@ -73,7 +84,17 @@ object SupabaseWatchHistorySyncService {
         
         // 解析本地数据
         val watchHistoryItems = try {
+            // 尝试使用kotlinx.serialization解析
+            try {
             json.decodeFromString<List<WatchHistoryItem>>(historyJson)
+            } catch (e: Exception) {
+                Log.d(TAG, "使用kotlinx.serialization解析失败，尝试使用Gson", e)
+                
+                // 备选：使用Gson解析
+                val gson = Gson()
+                val type = object : TypeToken<List<WatchHistoryItem>>() {}.type
+                gson.fromJson<List<WatchHistoryItem>>(historyJson, type)
+            }
         } catch (e: Exception) {
             Log.e(TAG, "解析本地历史数据失败", e)
             return@withContext 0
@@ -246,21 +267,22 @@ object SupabaseWatchHistorySyncService {
         }
         
         try {
+            // 使用SupabaseApiClient的方法
             val apiClient = SupabaseApiClient()
-            
-            // 获取服务器端数据
-            Log.d(TAG, "请求服务器观看历史数据, 用户ID: $userId")
             val response = apiClient.getWatchHistory(
                 page = 1,
                 pageSize = maxRecords,
                 timeRange = "all",
                 sortBy = "watch_start",
                 sortOrder = "desc"
+                // 不再传递method参数，使用默认值
             )
             
             // 解析服务器数据
+            Log.d(TAG, "服务器原始响应: ${response.toString().take(500)}")
+            
             val jsonObject = response as? JsonObject
-            Log.d(TAG, "服务器响应: $jsonObject")
+            Log.d(TAG, "服务器响应JSON: $jsonObject")
             
             val itemsArray = jsonObject?.get("items") as? JsonArray
             if (itemsArray == null) {

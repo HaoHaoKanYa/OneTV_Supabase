@@ -11,6 +11,7 @@ enum class SupabaseCacheKey(val prefsName: String, val keyName: String) {
     // 用户数据相关
     USER_DATA("supabase_user_cache", "cached_user_data"),
     USER_DATA_RAW("supabase_user_cache", "cached_user_data_raw"),
+    USER_DATA_JSON("supabase_user_cache", "cached_user_data_json"),
     USER_PROFILE("profile_info_cache", "cached_profile_data"),
     USER_SETTINGS("user_settings_cache", "cached_user_settings"),
     USER_VIP_STATUS("user_vip_cache", "cached_vip_status"),

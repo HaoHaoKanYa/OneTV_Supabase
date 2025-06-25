@@ -376,6 +376,7 @@ class SupabaseApiClient {
      * @param timeRange 时间范围 (all, today, week, month, year)
      * @param sortBy 排序字段 (watch_start, channel_name, duration)
      * @param sortOrder 排序方向 (asc, desc)
+     * @param method HTTP方法 (GET 或 POST)，默认为 GET
      * @return 观看历史数据和分页信息
      */
     suspend fun getWatchHistory(
@@ -383,15 +384,16 @@ class SupabaseApiClient {
         pageSize: Int = 20,
         timeRange: String = "all",
         sortBy: String = "watch_start",
-        sortOrder: String = "desc"
+        sortOrder: String = "desc",
+        method: String = "GET"
     ): JsonElement = withContext(Dispatchers.IO) {
         try {
-            log.d("获取观看历史: page=$page, timeRange=$timeRange, sortBy=$sortBy")
+            log.d("获取观看历史: page=$page, timeRange=$timeRange, sortBy=$sortBy, method=$method")
             
             val response = functions.invoke(
                 function = "watch_history?action=list&page=$page&pageSize=$pageSize&timeRange=$timeRange&sortBy=$sortBy&sortOrder=$sortOrder",
                 headers = io.ktor.http.Headers.build {
-                    append("Method", "GET")
+                    append("Method", "GET")  // 强制使用GET方法，不再使用参数中的method
                 }
             )
             

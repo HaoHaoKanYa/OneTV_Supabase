@@ -158,15 +158,58 @@ fun SettingsCategoryUser(
     
     // 使用LaunchedEffect加载会话数据
     LaunchedEffect(Unit) {
+        try {
+            Log.d("SettingsCategoryUser", "开始加载缓存数据...")
         session = SupabaseCacheManager.getCache(context, SupabaseCacheKey.SESSION)
-        userData = SupabaseCacheManager.getCache(context, SupabaseCacheKey.USER_DATA)
+            val cachedData = SupabaseCacheManager.getCache<Any>(context, SupabaseCacheKey.USER_DATA)
+            
+            // 添加类型检查和转换逻辑
+            if (cachedData != null) {
+                userData = when (cachedData) {
+                    is SupabaseUserDataIptv -> {
+                        Log.d("SettingsCategoryUser", "缓存数据类型正确，直接使用")
+                        cachedData
+                    }
+                    is Map<*, *> -> {
+                        Log.d("SettingsCategoryUser", "检测到LinkedTreeMap类型，进行转换")
+                        // 将Map转换为JSON再转换为SupabaseUserDataIptv对象
+                        val gson = Gson()
+                        val json = gson.toJson(cachedData)
+                        val convertedData = gson.fromJson(json, SupabaseUserDataIptv::class.java)
+                        
+                        // 重新保存正确类型的数据到缓存
+                        withContext(Dispatchers.IO) {
+                            SupabaseCacheManager.saveCache(
+                                context = context,
+                                key = SupabaseCacheKey.USER_DATA,
+                                data = convertedData,
+                                strategy = SupabaseCacheManager.getUserCacheStrategy(convertedData)
+                            )
+                            Log.d("SettingsCategoryUser", "已将转换后的数据重新保存到缓存")
+                        }
+                        
+                        convertedData
+                    }
+                    else -> {
+                        Log.w("SettingsCategoryUser", "未知的缓存数据类型: ${cachedData.javaClass.name}")
+                        null
+                    }
+                }
+                
+                Log.d("SettingsCategoryUser", "缓存数据加载完成：${userData?.username ?: "未知用户"}")
+            } else {
+                Log.d("SettingsCategoryUser", "缓存中没有用户数据，将尝试从服务器获取")
+            }
         
         // 如果有会话但没有用户数据，尝试刷新用户数据
         if (session != null && userData == null) {
             withContext(Dispatchers.IO) {
                 try {
+                        Log.d("SettingsCategoryUser", "开始从服务器获取用户数据...")
                     val userRepo = SupabaseUserRepository()
                     val freshData = userRepo.getUserData(session!!)
+                        
+                        Log.d("SettingsCategoryUser", "服务器数据获取成功，类型：${freshData.javaClass.name}")
                     
                     // 保存到缓存
                     SupabaseCacheManager.saveCache(
@@ -179,9 +222,12 @@ fun SettingsCategoryUser(
                     userData = freshData
                     Log.d("SettingsCategoryUser", "刷新用户数据成功: ${freshData.username}")
                 } catch (e: Exception) {
-                    Log.e("SettingsCategoryUser", "刷新用户数据失败", e)
+                        Log.e("SettingsCategoryUser", "刷新用户数据失败: ${e.message}", e)
                 }
             }
+            }
+        } catch (e: Exception) {
+            Log.e("SettingsCategoryUser", "加载用户数据时发生异常: ${e.message}", e)
         }
     }
 
@@ -696,23 +742,77 @@ private fun UserInfoView(
                                         Log.d("SettingsCategoryUser", "⚡ 用户手动触发刷新")
                                         isLoading = true
 
+                                        // 在IO线程执行网络请求
+                                        withContext(Dispatchers.IO) {
+                                            try {
+                                                Log.d("SettingsCategoryUser", "开始从服务器刷新用户数据...")
+                                                val userRepo = SupabaseUserRepository()
+                                                val freshData = userRepo.getUserData(session!!)
+                                                
+                                                Log.d("SettingsCategoryUser", "服务器数据获取成功: ${freshData.username}")
+                                                
+                                                // 确保数据类型正确并保存到缓存
+                                                SupabaseCacheManager.saveCache(
+                                                    context = context,
+                                                    key = SupabaseCacheKey.USER_DATA,
+                                                    data = freshData,
+                                                    strategy = SupabaseCacheManager.getUserCacheStrategy(freshData)
+                                                )
+                                                
+                                                // 更新最后加载时间
+                                                SupabaseCacheManager.saveCache(
+                                                    context = context,
+                                                    key = SupabaseCacheKey.LAST_LOADED_TIME,
+                                                    data = System.currentTimeMillis()
+                                                )
+                                                
+                                                // 在主线程更新UI
+                                                withContext(Dispatchers.Main) {
+                                                    userData = freshData
+                                                    Log.d("SettingsCategoryUser", "🔄 本地数据已更新｜用户ID: ${freshData.userid}")
+                                                }
+                                            } catch (e: Exception) {
+                                                Log.e("SettingsCategoryUser", "刷新用户数据失败: ${e.message}", e)
+                                                
+                                                // 失败时尝试从缓存加载
+                                                val cachedData = SupabaseCacheManager.getCache<Any>(context, SupabaseCacheKey.USER_DATA)
+                                        if (cachedData != null) {
+                                                    withContext(Dispatchers.Main) {
+                                                        userData = when (cachedData) {
+                                                            is SupabaseUserDataIptv -> {
+                                                                Log.d("SettingsCategoryUser", "使用缓存中的SupabaseUserDataIptv数据")
+                                                                cachedData
+                                                            }
+                                                            is Map<*, *> -> {
+                                                                Log.d("SettingsCategoryUser", "缓存中的数据为Map类型，进行转换")
+                                                                val gson = Gson()
+                                                                val json = gson.toJson(cachedData)
+                                                                gson.fromJson(json, SupabaseUserDataIptv::class.java)
+                                                            }
+                                                            else -> {
+                                                                Log.w("SettingsCategoryUser", "未知的缓存数据类型: ${cachedData.javaClass.name}")
+                                                                null
+                                                            }
+                                                        }
+                                                        Log.w("SettingsCategoryUser", "刷新失败，使用缓存数据: ${userData?.username ?: "未知用户"}")
+                                                    }
+                                                }
+                                                
+                                                withContext(Dispatchers.Main) {
+                                                    mainViewModel.showToast("刷新失败: ${e.message}")
+                                                }
+                                            }
+                                        }
+
                                         // 1. 调用ViewModel的统一刷新方法
                                         mainViewModel.forceRefreshUserData() // 内部已包含Toast提示
 
-                                        // 2. 显式更新本地UI数据（可选，依赖LaunchedEffect自动更新）
-                                        val cachedData = SupabaseCacheManager.getCache<SupabaseUserDataIptv>(context, SupabaseCacheKey.USER_DATA)
-                                        if (cachedData != null) {
-                                            userData = cachedData
-                                            Log.d("SettingsCategoryUser", "🔄 本地数据已更新｜用户ID: ${cachedData.userid}")
-                                        }
-
-                                        // 3. 补充UI层专属提示（如需定制化提示）
-                                        mainViewModel.showToast("信息已刷新")
-
-                                    } catch (e: Exception) {
-                                        Log.e("SettingsCategoryUser", "❌ 刷新流程异常", e)
-                                    } finally {
                                         isLoading = false
+                                        mainViewModel.showToast("信息已刷新")
+                                    } catch (e: Exception) {
+                                        Log.e("SettingsCategoryUser", "❌ 刷新流程异常: ${e.message}", e)
+                                        isLoading = false
+                                        mainViewModel.showToast("刷新出错，请稍后重试")
                                     }
                                 }
                             }
