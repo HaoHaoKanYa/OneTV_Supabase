@@ -265,6 +265,13 @@ class SupabaseLoginActivity : ComponentActivity() {
                                         log.i("🔥 正在预热用户缓存并强制拉取服务器观看历史...")
                                         withContext(Dispatchers.IO) {
                                             SupabaseCacheManager.preheatUserCache(this@SupabaseLoginActivity, userData.userid, true)
+                                            // 新增：登录后强制拉取服务器观看历史
+                                            try {
+                                                top.cywin.onetv.tv.supabase.sync.SupabaseWatchHistorySyncService.syncFromServer(this@SupabaseLoginActivity, 200)
+                                                log.i("✅ WATCH_HISTORY已强制拉取服务器数据")
+                                            } catch (e: Exception) {
+                                                log.e("❌ WATCH_HISTORY强制拉取服务器数据失败: ${e.message}")
+                                            }
                                         }
                                         log.i("🔥 用户缓存预热完成")
                                     } catch (e: Exception) {

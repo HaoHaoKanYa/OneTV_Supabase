@@ -718,17 +718,8 @@ object SupabaseCacheManager {
         for (key in userKeys) {
             try {
                 if (key == SupabaseCacheKey.WATCH_HISTORY && forceServer) {
-                    // 强制从服务器拉取观看历史
-                    Log.d(TAG, "强制从服务器拉取观看历史数据")
-                    try {
-                        val syncServiceClass = Class.forName("top.cywin.onetv.tv.supabase.sync.SupabaseWatchHistorySyncService")
-                        val syncFromServerMethod = syncServiceClass.getDeclaredMethod("syncFromServer", Context::class.java, Int::class.java)
-                        syncFromServerMethod.isAccessible = true
-                        // 拉取200条
-                        syncFromServerMethod.invoke(null, context, 200)
-                    } catch (e: Exception) {
-                        Log.e(TAG, "强制拉取服务器观看历史失败", e)
-                    }
+                    // 仅记录日志，不做任何操作，实际强制拉取由tv层负责
+                    Log.d(TAG, "WATCH_HISTORY强制拉取服务器逻辑已移至tv层，由tv层负责")
                 } else {
                     getCache<Any>(context, key) // 触发加载到内存缓存
                 }
