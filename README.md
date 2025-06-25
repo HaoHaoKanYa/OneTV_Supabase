@@ -29,31 +29,6 @@
 
 
 
-1. **克隆仓库**
-   ```bash
-   git clone https://github.com/HaoHaoKanYa/OneTV_Supabase.git
-   cd OneTV_Supabase
-   ```
-
-2. **配置 Supabase 凭据**
-   - 复制 `supabase_config.properties.example` 为 `supabase_config.properties`
-   - 填入你的 Supabase URL 和 API Key
-   ```properties
-   BOOTSTRAP_URL=https://your-project-id.supabase.co
-   BOOTSTRAP_KEY=your-anon-key
-   ```
-
-3. **配置签名密钥**
-   - 创建 `key.properties` 文件并配置签名信息
-   ```properties
-   storeFile=your_keystore.jks
-   storePassword=your_store_password
-   keyAlias=your_key_alias
-   keyPassword=your_key_password
-   ```
-
-### 构建和运行
-
 - **构建 TV 版本**
   ```bash
   ./gradlew :tv:assembleDebug
