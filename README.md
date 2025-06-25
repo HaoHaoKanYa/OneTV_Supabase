@@ -29,15 +29,6 @@
 
 
 
-- Android Studio Iguana (2023.2.1) 或更高版本
-- JDK 17+
-- Gradle 8.6+
-- Android SDK 34 (最低支持 API 21)
-- Kotlin 2.1.10
-- Node.js 18+ (用于 Supabase 本地开发)
-
-## 📁 项目结构
-
 ```
 OneTV_Supabase/
 ├── app/                  # 移动应用模块
