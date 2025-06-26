@@ -43,6 +43,12 @@ jobs:
         echo "storePassword=${{ secrets.KEYSTORE_PASSWORD }}" >> key.properties
         echo "keyAlias=${{ secrets.KEY_ALIAS }}" >> key.properties
         echo "keyPassword=${{ secrets.KEY_PASSWORD }}" >> key.properties
+        # 复制keystore.jks到mobile目录
+        mkdir -p mobile
+        cp keystore.jks mobile/keystore.jks
+        # 复制keystore.jks到tv目录
+        mkdir -p tv
+        cp keystore.jks tv/keystore.jks
 
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
@@ -52,6 +58,7 @@ jobs:
       env:
         BOOTSTRAP_URL: ${{ secrets.BOOTSTRAP_URL }}
         BOOTSTRAP_KEY: ${{ secrets.BOOTSTRAP_KEY }}
+        SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         KEYSTORE: keystore.jks
         KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
         KEY_ALIAS: ${{ secrets.KEY_ALIAS }}

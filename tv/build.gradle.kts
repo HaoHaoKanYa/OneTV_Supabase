@@ -40,6 +40,10 @@ android {
             )
             signingConfig = signingConfigs.getByName("release")
         }
+        debug {
+            // 为调试版本也使用相同的签名配置，确保测试时的签名一致性
+            signingConfig = signingConfigs.getByName("release")
+        }
     }
 
     compileOptions {

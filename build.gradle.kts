@@ -37,7 +37,15 @@ allprojects {
                 if (!envKeystore.isNullOrEmpty()) {
                     // CI/CD环境使用环境变量中的密钥库
                     println("使用环境变量中的签名配置")
-                    storeFile = file(envKeystore)
+                    // 检查项目目录下是否有keystore文件
+                    val projectKeystoreFile = File(project.projectDir, envKeystore)
+                    if (projectKeystoreFile.exists()) {
+                        // 优先使用项目目录下的keystore
+                        storeFile = projectKeystoreFile
+                    } else {
+                        // 如果项目目录下没有，使用根目录的keystore
+                        storeFile = file(envKeystore)
+                    }
                     storePassword = envStorePassword
                     keyAlias = envKeyAlias
                     keyPassword = envKeyPassword
