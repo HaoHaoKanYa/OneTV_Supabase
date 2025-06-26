@@ -29,13 +29,6 @@
 
 
 
-- [更新日志](CHANGELOG.md) - 详细的版本更新记录
-- [发布指南](RELEASE_GUIDE.md) - 版本发布流程说明
-- [Supabase 配置指南](supabase/README.md) - Supabase 后端配置说明
-- [贡献指南](CONTRIBUTING.md) - 参与项目开发的指南
-
-## 📞 联系与支持
-
 - **问题反馈**：通过 [GitHub Issues](https://github.com/HaoHaoKanYa/OneTV_Supabase/issues) 提交
 - **公众号**：【壹来了】获取最新动态和支持
 - **讨论区**：使用 [GitHub Discussions](https://github.com/HaoHaoKanYa/OneTV_Supabase/discussions) 参与讨论
