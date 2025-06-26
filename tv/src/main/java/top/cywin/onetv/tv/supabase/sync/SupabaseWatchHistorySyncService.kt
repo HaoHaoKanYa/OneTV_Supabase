@@ -146,13 +146,13 @@ object SupabaseWatchHistorySyncService {
             if (uuidItems.isEmpty()) {
                 Log.d(TAG, "没有UUID格式的本地记录需要同步")
                 emptyList()
-            } else if (uuidItems.size <= 5) {
-                // 记录较少时，直接依赖服务器端的重复检查，不预先获取服务器记录
-                Log.d(TAG, "本地待同步记录较少(${uuidItems.size}条)，依赖服务器端重复检查")
+            } else if (uuidItems.size <= 10) {
+                // 记录较少时(≤10条)，使用单条同步模式，依赖服务器端重复检查
+                Log.d(TAG, "本地待同步记录较少(${uuidItems.size}条)，将使用单条同步模式")
                 uuidItems
             } else {
-                // 记录较多时，先获取服务器记录进行客户端去重
-                Log.d(TAG, "本地待同步记录较多(${uuidItems.size}条)，进行客户端预去重")
+                // 记录较多时(>10条)，使用批量upsert同步模式，先获取服务器记录进行客户端去重
+                Log.d(TAG, "本地待同步记录较多(${uuidItems.size}条)，将使用批量upsert同步模式，进行客户端预去重")
 
                 val serverItems = try {
                     getServerWatchHistory(context, userId)
@@ -195,14 +195,18 @@ object SupabaseWatchHistorySyncService {
         }
 
         Log.d(TAG, "发现 ${pendingItems.size} 条需要同步的观看历史记录（已去除服务器重复）")
-        
-        // 根据记录数量选择同步策略
+
+        // 混合同步策略：根据记录数量选择最优同步方式
+        // ≤20条：单条同步 - 更好的错误处理和实时反馈
+        // >20条：批量upsert - 更高效率和并发安全性
         val syncCount = if (pendingItems.size <= 10) {
-            // 少量记录，使用单条同步
+            // 少量记录(≤10条)，使用单条同步模式
+            Log.d(TAG, "使用单条同步模式处理 ${pendingItems.size} 条记录（优势：错误处理好，实时反馈）")
             individualSyncToServer(context, pendingItems, userId)
         } else {
-            // 大量记录，使用批量同步
-            batchSyncToServer(context, pendingItems, userId)
+            // 大量记录(>10条)，使用批量upsert同步模式
+            Log.d(TAG, "使用批量upsert同步模式处理 ${pendingItems.size} 条记录（优势：高效率，并发安全）")
+            batchUpsertSyncToServer(context, pendingItems, userId)
         }
         
         if (syncCount > 0) {
@@ -229,9 +233,78 @@ object SupabaseWatchHistorySyncService {
         
         return syncCount
     }
-    
+
     /**
-     * 批量同步观看历史到服务器
+     * 批量upsert同步观看历史到服务器（新版本，使用upsert Edge Function）
+     * 适用于大量记录的情况，提供更好的并发安全性
+     */
+    private suspend fun batchUpsertSyncToServer(
+        context: Context,
+        pendingItems: List<WatchHistoryItem>,
+        userId: String
+    ): Int = withContext(Dispatchers.IO) {
+        Log.d(TAG, "开始批量upsert同步，记录数: ${pendingItems.size}")
+        val apiClient = SupabaseApiClient()
+
+        // 准备批量同步数据
+        val batchData = pendingItems.map { item ->
+            mapOf(
+                "channelName" to item.channelName,
+                "channelUrl" to item.channelUrl,
+                "duration" to item.duration,
+                "watchStart" to item.watchStart,
+                "watchEnd" to item.watchEnd
+            )
+        }
+
+        try {
+            // 调用批量upsert同步API（新版本，支持并发安全）
+            val response = apiClient.batchUpsertWatchHistory(batchData)
+
+            val jsonObject = response as? JsonObject
+            val success = jsonObject?.get("success")?.let {
+                (it as? JsonPrimitive)?.content?.contains("true")
+            } ?: false
+
+            if (success) {
+                // 解析服务器返回的详细信息
+                val dataObject = jsonObject?.get("data") as? JsonObject
+                val inserted = dataObject?.get("inserted")?.let { element ->
+                    when (element) {
+                        is JsonPrimitive -> {
+                            if (element.isString) element.content.toIntOrNull() ?: 0
+                            else element.intOrNull ?: 0
+                        }
+                        else -> 0
+                    }
+                } ?: 0
+                val duplicates = dataObject?.get("duplicates")?.let { element ->
+                    when (element) {
+                        is JsonPrimitive -> {
+                            if (element.isString) element.content.toIntOrNull() ?: 0
+                            else element.intOrNull ?: 0
+                        }
+                        else -> 0
+                    }
+                } ?: 0
+
+                Log.d(TAG, "批量upsert同步成功: 插入 $inserted 条新记录, 跳过 $duplicates 条重复记录")
+                return@withContext inserted
+            } else {
+                val errorMsg = jsonObject?.get("error")?.let {
+                    (it as? JsonPrimitive)?.content
+                } ?: "未知错误"
+                Log.e(TAG, "批量upsert同步失败: $errorMsg")
+                return@withContext 0
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "批量upsert同步异常: ${e.message}", e)
+            return@withContext 0
+        }
+    }
+
+    /**
+     * 批量同步观看历史到服务器（旧版本，保持兼容性）
      * 适用于大量记录的情况
      */
     private suspend fun batchSyncToServer(
@@ -253,8 +326,8 @@ object SupabaseWatchHistorySyncService {
         }
         
         try {
-            // 调用批量同步API
-            val response = apiClient.batchRecordWatchHistory(batchData)
+            // 调用批量upsert同步API（新版本，支持并发安全）
+            val response = apiClient.batchUpsertWatchHistory(batchData)
             
             val jsonObject = response as? JsonObject
             val success = jsonObject?.get("success")?.let {

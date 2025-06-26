@@ -49,58 +49,90 @@ serve(async (req) => {
 
     // Parse request body
     const body = await req.json()
-    const { channelName, channelUrl, duration, watchStart, watchEnd } = body
+    const { records } = body
 
-    console.log(`Upsert watch history: user=${userId}, channel=${channelName}, duration=${duration}`)
+    console.log(`Batch upsert watch history: user=${userId}, records=${records?.length || 0}`)
 
-    // Validate required parameters
-    if (!channelName || !channelUrl || !duration || duration <= 0) {
+    // Validate records array
+    if (!records || !Array.isArray(records) || records.length === 0) {
       return new Response(
-        JSON.stringify({ success: false, error: 'Missing or invalid required parameters' }),
+        JSON.stringify({ success: false, error: 'Missing or invalid records array' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
-    // Calculate watch times if not provided
+    let insertedCount = 0
+    let duplicateCount = 0
+    const insertedRecords = []
     const now = new Date().toISOString()
-    const startTime = watchStart || new Date(new Date().getTime() - duration * 1000).toISOString()
-    const endTime = watchEnd || now
 
-    // Use upsert with conflict resolution
-    const { data, error } = await supabaseClient
-      .from('watch_history')
-      .upsert({
-        user_id: userId,
-        channel_name: channelName,
-        channel_url: channelUrl,
-        watch_start: startTime,
-        watch_end: endTime,
-        duration: duration,
-        created_at: now
-      }, {
-        onConflict: 'user_id,channel_name,channel_url,watch_start',
-        ignoreDuplicates: true
-      })
-      .select()
+    // Process each record
+    for (const record of records) {
+      const { channelName, channelUrl, duration, watchStart, watchEnd } = record
 
-    if (error) {
-      console.error("Upsert watch history failed:", error)
-      return new Response(
-        JSON.stringify({ success: false, error: error.message }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+      // Validate required parameters for each record
+      if (!channelName || !channelUrl || !duration || duration <= 0) {
+        console.warn(`Skipping invalid record: ${JSON.stringify(record)}`)
+        duplicateCount++
+        continue
+      }
+
+      // Calculate watch times if not provided
+      const startTime = watchStart || new Date(new Date().getTime() - duration * 1000).toISOString()
+      const endTime = watchEnd || now
+
+      try {
+        // Use upsert with conflict resolution
+        const { data, error } = await supabaseClient
+          .from('watch_history')
+          .upsert({
+            user_id: userId,
+            channel_name: channelName,
+            channel_url: channelUrl,
+            watch_start: startTime,
+            watch_end: endTime,
+            duration: duration,
+            created_at: now
+          }, {
+            onConflict: 'user_id,channel_name,channel_url,watch_start',
+            ignoreDuplicates: true
+          })
+          .select()
+
+        if (error) {
+          console.error(`Upsert record failed: ${error.message}`, record)
+          if (error.code === '23505') {
+            duplicateCount++
+          }
+        } else if (data && data.length > 0) {
+          insertedCount++
+          insertedRecords.push(data[0])
+          console.log(`Inserted record: channel=${channelName}, id=${data[0].id}`)
+        } else {
+          duplicateCount++
+          console.log(`Duplicate record ignored: channel=${channelName}`)
+        }
+      } catch (e) {
+        console.error(`Error processing record: ${e.message}`, record)
+        if (e.code === '23505') {
+          duplicateCount++
+        }
+      }
     }
 
-    const isNewRecord = data && data.length > 0
-    console.log(`Watch history upsert result: ${isNewRecord ? 'inserted' : 'duplicate'}`)
+    console.log(`Batch upsert completed: inserted=${insertedCount}, duplicates=${duplicateCount}`)
 
     return new Response(
-      JSON.stringify({ 
-        success: true, 
-        message: isNewRecord ? "Record inserted" : "Duplicate record ignored",
-        data: { 
-          inserted: isNewRecord,
-          record: data?.[0] || null
+      JSON.stringify({
+        success: true,
+        message: insertedCount > 0 ?
+          `Successfully inserted ${insertedCount} records, skipped ${duplicateCount} duplicates` :
+          "All records already exist",
+        data: {
+          inserted: insertedCount,
+          duplicates: duplicateCount,
+          total: records.length,
+          records: insertedRecords
         }
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

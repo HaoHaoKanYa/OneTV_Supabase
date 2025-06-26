@@ -37,8 +37,12 @@ class SupabaseVideoPlayerWatchHistoryTracker(
     // 是否正在跟踪
     private var isTracking = false
     
-    // 最小记录时长（秒）- 从10秒修改为5秒
-    private val MIN_RECORD_DURATION = 5L
+    // 最小记录时长（秒）- 15秒，避免记录快速浏览的频道
+    private val MIN_RECORD_DURATION = 15L
+
+    // 最小频道切换间隔（毫秒）- 5秒内的频繁切换不记录，避免快速切换产生碎片
+    private val MIN_SWITCH_INTERVAL = 5_000L
+    private var lastSwitchTime = 0L
     
     // 频道切换/关闭应用时保存，不再定时保存
     private val CHECK_INTERVAL = 60_000L // 仅作为内部检查时间，减少资源占用
@@ -97,30 +101,40 @@ class SupabaseVideoPlayerWatchHistoryTracker(
             // 确保更新最新的观看时长
             updateWatchDuration()
             
-            // 切换频道时，即使不到最小记录时间也保存观看记录
+            // 频道切换防抖：检查是否过于频繁切换
+            val currentTime = System.currentTimeMillis()
+            val timeSinceLastSwitch = currentTime - lastSwitchTime
+
             val previousChannel = currentChannel
             val finalDuration = watchDuration
-            
-            if (previousChannel != null && finalDuration > 0) {
-                Log.d(TAG, "[WatchTracker] 切换频道时强制保存记录: ${previousChannel.name}, 时长=${finalDuration}秒")
-                
-                coroutineScope.launch(Dispatchers.IO) {
-                    try {
-                        // 使用本地管理器记录观看历史
-                        SupabaseWatchHistorySessionManager.recordChannelWatch(
-                            channelName = previousChannel.name,
-                            channelUrl = previousChannel.urlList.firstOrNull() ?: "",
-                            duration = finalDuration,
-                            context = context
-                        )
-                        
-                        Log.d(TAG, "[WatchTracker] 切换频道时成功保存观看历史: ${previousChannel.name}, 时长: $finalDuration 秒")
-                        // 不再立即同步到服务器，仅在应用退出时同步
-                        Log.d(TAG, "[WatchTracker] 记录已保存到本地，将在应用退出时同步到服务器")
-                    } catch (e: Exception) {
-                        Log.e(TAG, "[WatchTracker] 切换频道时保存观看历史失败: ${e.message}", e)
+
+            if (previousChannel != null && finalDuration >= MIN_RECORD_DURATION) {
+                if (timeSinceLastSwitch >= MIN_SWITCH_INTERVAL) {
+                    Log.d(TAG, "[WatchTracker] 切换频道保存记录: ${previousChannel.name}, 时长=${finalDuration}秒")
+
+                    coroutineScope.launch(Dispatchers.IO) {
+                        try {
+                            // 使用本地管理器记录观看历史
+                            SupabaseWatchHistorySessionManager.recordChannelWatch(
+                                channelName = previousChannel.name,
+                                channelUrl = previousChannel.urlList.firstOrNull() ?: "",
+                                duration = finalDuration,
+                                context = context
+                            )
+
+                            Log.d(TAG, "[WatchTracker] 切换频道时成功保存观看历史: ${previousChannel.name}, 时长: $finalDuration 秒")
+                            Log.d(TAG, "[WatchTracker] 记录已保存到本地缓存，将在应用/账户退出时统一同步到服务器")
+                        } catch (e: Exception) {
+                            Log.e(TAG, "[WatchTracker] 切换频道时保存观看历史失败: ${e.message}", e)
+                        }
                     }
+
+                    lastSwitchTime = currentTime
+                } else {
+                    Log.d(TAG, "[WatchTracker] 频道切换过于频繁，跳过记录: ${previousChannel.name}, 切换间隔=${timeSinceLastSwitch}ms < ${MIN_SWITCH_INTERVAL}ms（防止快速切换产生碎片记录）")
                 }
+            } else if (previousChannel != null && finalDuration > 0) {
+                Log.d(TAG, "[WatchTracker] 观看时长不足，跳过记录: ${previousChannel.name}, 观看时长=${finalDuration}秒 < ${MIN_RECORD_DURATION}秒（避免记录快速浏览）")
             }
             
             // 重置跟踪状态
@@ -211,8 +225,10 @@ class SupabaseVideoPlayerWatchHistoryTracker(
         isTracking = false
         currentChannel = null
         watchDuration = 0
-        
+
         Log.d(TAG, "[WatchTracker] 跟踪已完全停止, 资源已释放")
+        // 停止跟踪时只保存到本地，不同步到服务器
+        // 所有本地记录将在应用/账户退出时统一同步
     }
     
     /**

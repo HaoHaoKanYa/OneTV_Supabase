@@ -6,6 +6,7 @@ import io.github.jan.supabase.functions.functions
 import io.github.jan.supabase.storage.storage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
@@ -635,7 +636,74 @@ class SupabaseApiClient {
     }
 
     /**
-     * 批量记录观看历史
+     * 使用upsert方式批量记录观看历史（推荐）
+     * @param records 观看记录列表，每条记录包含channelName, channelUrl, duration, watchStart, watchEnd
+     * @return 记录结果
+     */
+    suspend fun batchUpsertWatchHistory(
+        records: List<Map<String, Any?>>
+    ): JsonElement = withContext(Dispatchers.IO) {
+        try {
+            log.d("批量upsert观看历史: 记录数量=${records.size}")
+
+            if (records.isEmpty()) {
+                log.w("批量upsert观看历史: 记录为空, 跳过请求")
+                return@withContext buildJsonObject {
+                    put("success", false)
+                    put("error", "无观看记录")
+                }
+            }
+
+            // 构建JSON数组
+            val jsonRecords = JsonArray(
+                records.map { record ->
+                    buildJsonObject {
+                        put("channelName", record["channelName"]?.toString() ?: "")
+                        put("channelUrl", record["channelUrl"]?.toString() ?: "")
+                        put("duration", record["duration"]?.toString()?.toIntOrNull() ?: 0)
+                        put("watchStart", record["watchStart"]?.toString() ?: "")
+                        put("watchEnd", record["watchEnd"]?.toString() ?: "")
+                    }
+                }
+            )
+
+            val requestData = buildJsonObject {
+                put("records", jsonRecords)
+            }
+
+            log.d("准备发送批量upsert观看历史请求: URL=watch_history_upsert, 内容大小=${jsonRecords.toString().length}字节")
+
+            val response = functions.invoke(
+                function = "watch_history_upsert",
+                body = requestData
+            )
+
+            val responseText = response.bodyAsText()
+            log.d("批量upsert观看历史响应: ${responseText.take(500)}${if (responseText.length > 500) "..." else ""}")
+
+            // 检查响应是否为空
+            if (responseText.isBlank()) {
+                log.e("批量upsert观看历史失败: 空响应")
+                return@withContext buildJsonObject {
+                    put("success", false)
+                    put("error", "服务器返回空响应")
+                }
+            }
+
+            // 解析JSON响应
+            return@withContext Json.parseToJsonElement(responseText)
+
+        } catch (e: Exception) {
+            log.e("批量upsert观看历史异常: ${e.message}", e)
+            return@withContext buildJsonObject {
+                put("success", false)
+                put("error", e.message ?: "未知错误")
+            }
+        }
+    }
+
+    /**
+     * 批量记录观看历史（旧版本，保持兼容性）
      * @param records 观看记录列表，每条记录包含channelName, channelUrl, duration, watchStart, watchEnd
      * @return 记录结果
      */

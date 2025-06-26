@@ -77,7 +77,11 @@ class MainActivity : ComponentActivity() {
 
         // 检查环境变量
         SupabaseEnvChecker.checkAllEnvVariables()
-        
+
+        // 重置同步状态（新的应用会话开始）
+        SupabaseAppExitSyncManager.resetSyncState()
+        Log.d(TAG, "应用启动，同步状态已重置")
+
         // 初始化观看历史会话管理器
         Log.d(TAG, "初始化观看历史会话管理器")
         SupabaseWatchHistorySessionManager.initialize(applicationContext)
@@ -199,6 +203,45 @@ class MainActivity : ComponentActivity() {
         }
     }
     
+    override fun onStop() {
+        Log.d(TAG, "MainActivity onStop 被调用 - 应用进入后台")
+        super.onStop()
+
+        // 应用进入后台时同步观看历史
+        performBackgroundSync()
+    }
+
+    override fun onPause() {
+        Log.d(TAG, "MainActivity onPause 被调用")
+        super.onPause()
+
+        // 应用暂停时也同步观看历史
+        performBackgroundSync()
+    }
+
+    /**
+     * 执行后台同步
+     */
+    private fun performBackgroundSync() {
+        // 先保存当前观看记录
+        val tracker = SupabaseVideoPlayerWatchHistoryTracker.getInstance()
+        if (tracker != null) {
+            Log.d(TAG, "应用进入后台，保存当前观看记录")
+            tracker.onAppExit()
+        }
+
+        // 异步同步到服务器
+        appScope.launch {
+            try {
+                Log.d(TAG, "应用进入后台，开始同步观看历史")
+                val count = SupabaseAppExitSyncManager.performExitSync(applicationContext)
+                Log.d(TAG, "后台同步完成，同步了 $count 条观看记录")
+            } catch (e: Exception) {
+                Log.e(TAG, "后台同步观看历史失败", e)
+            }
+        }
+    }
+
     override fun onDestroy() {
         Log.d(TAG, "MainActivity onDestroy 被调用")
         super.onDestroy()
@@ -216,7 +259,7 @@ class MainActivity : ComponentActivity() {
         } else {
             Log.d(TAG, "未找到观看历史跟踪器实例，无法保存当前观看记录")
         }
-        
+
         // 确保在应用销毁时同步观看历史
         appScope.launch {
             try {

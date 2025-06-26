@@ -125,12 +125,21 @@ object SupabaseCacheManager {
         // 保存到持久化存储
         val prefs = context.getSharedPreferences(key.prefsName, Context.MODE_PRIVATE)
         try {
-            val json = Gson().toJson(data)
+            // 特殊处理WATCH_HISTORY，避免双重序列化
+            val json = if (key == SupabaseCacheKey.WATCH_HISTORY && data is String) {
+                // 如果是WATCH_HISTORY且数据已经是JSON字符串，直接使用
+                Log.d(TAG, "WATCH_HISTORY数据已是JSON字符串，避免双重序列化")
+                data
+            } else {
+                // 其他情况正常序列化
+                Gson().toJson(data)
+            }
+
             prefs.edit()
                 .putString(key.keyName, json)
                 .putLong("${key.keyName}_time", entry.createTime)
                 .apply()
-            
+
             Log.d(TAG, "缓存保存成功 | 键：${key.name} | 时间：${entry.getFormattedCreateTime()}")
         } catch (e: Exception) {
             Log.e(TAG, "缓存保存失败 | 键：${key.name}", e)
@@ -226,24 +235,36 @@ object SupabaseCacheManager {
                         Log.d(TAG, "处理WATCH_HISTORY类型，使用String类型存储")
                         
                         if (defaultValue is String || defaultValue == null) {
-                            // 直接返回原始JSON字符串，不进行解析
-                            Log.d(TAG, "WATCH_HISTORY直接返回JSON字符串，不进行解析")
-                            
+                            // 检查JSON是否被双重序列化了
+                            val actualJson = if (json.startsWith("\"") && json.endsWith("\"")) {
+                                // 如果JSON被双重序列化，需要反序列化一次
+                                Log.d(TAG, "检测到WATCH_HISTORY被双重序列化，进行修复")
+                                try {
+                                    Gson().fromJson(json, String::class.java)
+                                } catch (e: Exception) {
+                                    Log.w(TAG, "修复双重序列化失败，使用原始数据: ${e.message}")
+                                    json
+                                }
+                            } else {
+                                json
+                            }
+
+                            Log.d(TAG, "WATCH_HISTORY返回JSON字符串 | 长度: ${actualJson.length}")
+
                             // 检查数据有效性
                             val config = cacheConfigs[key] ?: SupabaseCacheConfig.DEFAULT
                             val strategy = config.toStrategy()
-                            
-                            // 更新内存缓存，存储原始字符串
+
+                            // 更新内存缓存，存储修复后的字符串
                             synchronized(memoryCache) {
                                 memoryCache[cacheKey] = SupabaseCacheEntry(
-                                    data = json as Any,
+                                    data = actualJson as Any,
                                     createTime = createTime,
                                     strategy = strategy
                                 )
                             }
-                            
-                            Log.d(TAG, "WATCH_HISTORY成功加载为字符串 | 长度: ${json.length}")
-                            return@withContext json as T
+
+                            return@withContext actualJson as T
                         } else {
                             // 如果请求的不是String类型，尝试进行适当的解析
                             Log.d(TAG, "处理WATCH_HISTORY类型，检测到非字符串请求格式")

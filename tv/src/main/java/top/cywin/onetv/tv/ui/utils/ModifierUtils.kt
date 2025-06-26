@@ -258,8 +258,21 @@ fun Modifier.handleKeyEvents(
 
 fun Modifier.captureBackKey(onBackPressed: () -> Unit) = this.onPreviewKeyEvent {
     if (it.key == Key.Back && it.type == KeyEventType.KeyUp) {
+        android.util.Log.d("BackKey", "返回键被捕获: ${Thread.currentThread().stackTrace[3].className}")
         onBackPressed()
         true
+    } else {
+        false
+    }
+}
+
+/**
+ * 捕获返回键但允许事件继续传递（用于非阻塞性处理）
+ */
+fun Modifier.captureBackKeyNonBlocking(onBackPressed: () -> Unit) = this.onPreviewKeyEvent {
+    if (it.key == Key.Back && it.type == KeyEventType.KeyUp) {
+        onBackPressed()
+        false // 不阻塞事件传递
     } else {
         false
     }

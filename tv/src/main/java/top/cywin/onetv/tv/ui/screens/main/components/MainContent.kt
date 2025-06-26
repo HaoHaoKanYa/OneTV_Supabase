@@ -82,7 +82,7 @@ fun MainContent(
     Box(
         modifier = modifier
             .popupable()
-            .captureBackKey { onBackPressed() }
+            // 移除重复的返回键捕获，由外层MainScreenSettingsWrapper统一处理
             .handleKeyEvents(
                 onUp = {
                     if (settingsViewModel.iptvChannelChangeFlip) mainContentState.changeCurrentChannelToNext()

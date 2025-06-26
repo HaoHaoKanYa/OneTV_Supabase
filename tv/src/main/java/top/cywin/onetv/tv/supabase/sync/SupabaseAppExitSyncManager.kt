@@ -24,28 +24,28 @@ object SupabaseAppExitSyncManager {
     suspend fun performExitSync(context: Context): Int {
         return exitSyncLock.withLock {
             if (hasExitSynced) {
-                Log.d(TAG, "应用退出同步已完成，跳过重复请求")
+                Log.d(TAG, "本次会话已完成同步，跳过重复请求")
                 return@withLock 0
             }
-            
+
             if (isExitSyncing) {
-                Log.d(TAG, "应用退出同步正在进行中，跳过重复请求")
+                Log.d(TAG, "同步正在进行中，跳过重复请求")
                 return@withLock 0
             }
-            
+
             isExitSyncing = true
             try {
                 Log.d(TAG, "开始执行应用退出同步")
-                
+
                 // 执行同步操作
                 val syncCount = SupabaseWatchHistorySyncService.syncToServer(context)
-                
+
                 if (syncCount > 0) {
                     Log.d(TAG, "应用退出同步完成，成功同步 $syncCount 条记录")
                 } else {
                     Log.d(TAG, "应用退出同步完成，无记录需要同步")
                 }
-                
+
                 hasExitSynced = true
                 return@withLock syncCount
             } catch (e: Exception) {
@@ -64,20 +64,20 @@ object SupabaseAppExitSyncManager {
     fun resetSyncState() {
         hasExitSynced = false
         isExitSyncing = false
-        Log.d(TAG, "应用退出同步状态已重置")
+        Log.d(TAG, "同步状态已重置")
     }
-    
+
     /**
      * 检查是否已完成退出同步
      */
     fun hasCompletedExitSync(): Boolean {
         return hasExitSynced
     }
-    
+
     /**
-     * 检查是否正在进行退出同步
+     * 检查是否正在进行同步
      */
-    fun isExitSyncInProgress(): Boolean {
+    fun isSyncInProgress(): Boolean {
         return isExitSyncing
     }
 }
