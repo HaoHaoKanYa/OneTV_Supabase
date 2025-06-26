@@ -930,104 +930,157 @@ private fun ServerInfoBox(
         // 整点同步
         // 启动双重定时器
         val job1 = coroutineScope.launch(Dispatchers.IO) { // 整点同步
-            var attemptCount = 0
-            while (true) {
-                try {
-                    // 1. 计算下次刷新时间
-                    val nextHourTime = calculateNextHourTime()
-                    val delayMs = nextHourTime - System.currentTimeMillis()
+            try {
+                var attemptCount = 0
+                while (isActive) { // 使用isActive检查协程是否被取消
+                    try {
+                        // 1. 计算下次刷新时间
+                        val nextHourTime = calculateNextHourTime()
+                        val delayMs = nextHourTime - System.currentTimeMillis()
 
-                    // 新增调试日志
-                    Log.d(
-                        "SettingsCategoryUser",
-                        """
-                        [定时器状态] 
-                        当前时间：${timeFormat.format(Date())}
-                        下次触发：${timeFormat.format(Date(nextHourTime))}
-                        延迟时间：${delayMs}ms
-                        尝试次数：${++attemptCount}
-                        """.trimIndent()
-                    )
+                        // 新增调试日志
+                        Log.d(
+                            "SettingsCategoryUser",
+                            """
+                            [定时器状态] 
+                            当前时间：${timeFormat.format(Date())}
+                            下次触发：${timeFormat.format(Date(nextHourTime))}
+                            延迟时间：${delayMs}ms
+                            尝试次数：${++attemptCount}
+                            """.trimIndent()
+                        )
 
-                    if (delayMs > 0) {
-                        delay(delayMs)
+                        if (delayMs > 0) {
+                            delay(delayMs)
+                        }
+
+                        // 检查协程是否被取消
+                        if (!isActive) break
+
+                        // 2. 执行同步
+                        Log.d("SettingsCategoryUser", "[整点触发] 开始同步...")
+                        val newData = onlineManager.getCachedData()
+                        Log.d(
+                            "SettingsCategoryUser",
+                            """
+                            [同步结果] 
+                            total=${newData.total} 
+                            base=${newData.base}
+                            real=${newData.real} 
+                            updated=${timeFormat.format(Date(newData.updated * 1000L))}
+                            """.trimIndent()
+                        )
+
+                        // 检查协程是否被取消
+                        if (!isActive) break
+
+                        // 3. 更新UI数据
+                        withContext(Dispatchers.Main) {
+                            if (isActive) { // 在UI更新前再次检查
+                                displayData = newData
+                            }
+                        }
+
+                        // 4. 等待下一个周期
+                        delay(calculateNextInterval())
+                    } catch (e: Exception) {
+                        if (e is kotlinx.coroutines.CancellationException) {
+                            Log.d("SettingsCategoryUser", "整点同步任务被取消")
+                            break // 正常取消，退出循环
+                        }
+                        
+                        Log.e(
+                            "SettingsCategoryUser",
+                            """
+                            [同步异常] 
+                            错误类型：${e.javaClass.simpleName}
+                            错误信息：${e.message}
+                            """.trimIndent(),
+                            e
+                        )
+                        if (isActive) {
+                            delay(30000) // 异常后等待30秒重试，但前提是协程仍然活跃
+                        } else {
+                            break
+                        }
                     }
-
-                    // 2. 执行同步
-                    Log.d("SettingsCategoryUser", "[整点触发] 开始同步...")
-                    val newData = onlineManager.getCachedData()
-                    Log.d(
-                        "SettingsCategoryUser",
-                        """
-                        [同步结果] 
-                        total=${newData.total} 
-                        base=${newData.base}
-                        real=${newData.real} 
-                        updated=${timeFormat.format(Date(newData.updated * 1000L))}
-                        """.trimIndent()
-                    )
-
-                    // 3. 更新UI数据
-                    withContext(Dispatchers.Main) {
-                        displayData = newData
-                    }
-
-                    // 4. 等待下一个周期
-                    delay(calculateNextInterval())
-
-                } catch (e: Exception) {
-                    Log.e(
-                        "SettingsCategoryUser",
-                        """
-                        [同步异常] 
-                        错误类型：${e.javaClass.simpleName}
-                        错误信息：${e.message}
-                        """.trimIndent(),
-                        e
-                    )
-                    delay(30000) // 异常后等待30秒重试
+                }
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) {
+                    Log.d("SettingsCategoryUser", "整点同步任务被最终取消")
+                } else {
+                    Log.e("SettingsCategoryUser", "整点同步任务异常：${e.message}", e)
                 }
             }
         }
 
         // 10分钟定时器
         val job2 = coroutineScope.launch(Dispatchers.IO) {
-            while (true) {
-                try {
-                    delay(10L * 60 * 1000) // 10分钟
-                    Log.d("SettingsCategoryUser", "[定时刷新] 每10分钟更新...")
+            try {
+                while (isActive) { // 使用isActive检查协程是否被取消
+                    try {
+                        delay(10L * 60 * 1000) // 10分钟
+                        
+                        // 检查协程是否被取消
+                        if (!isActive) break
+                        
+                        Log.d("SettingsCategoryUser", "[定时刷新] 每10分钟更新...")
 
-                    val newData = onlineManager.getCachedData()
-                    Log.d(
-                        "SettingsCategoryUser",
-                        """
-                        [定时刷新结果]
-                        total=${newData.total}
-                        base=${newData.base}
-                        real=${newData.real}
-                        """.trimIndent()
-                    )
+                        val newData = onlineManager.getCachedData()
+                        Log.d(
+                            "SettingsCategoryUser",
+                            """
+                            [定时刷新结果]
+                            total=${newData.total}
+                            base=${newData.base}
+                            real=${newData.real}
+                            """.trimIndent()
+                        )
 
-                    withContext(Dispatchers.Main) {
-                        displayData = newData
+                        // 检查协程是否被取消
+                        if (!isActive) break
+
+                        withContext(Dispatchers.Main) {
+                            if (isActive) { // 在UI更新前再次检查
+                                displayData = newData
+                            }
+                        }
+                    } catch (e: Exception) {
+                        if (e is kotlinx.coroutines.CancellationException) {
+                            Log.d("SettingsCategoryUser", "10分钟定时任务被取消")
+                            break // 正常取消，退出循环
+                        }
+                        
+                        Log.e(
+                            "SettingsCategoryUser",
+                            """
+                            [同步异常]
+                            错误类型：${e::class.simpleName}
+                            错误信息：${e.message}
+                            """.trimIndent(),
+                            e
+                        )
+                        if (isActive) {
+                            delay(30000) // 异常后等待30秒重试，但前提是协程仍然活跃
+                        } else {
+                            break
+                        }
                     }
-                } catch (e: Exception) {
-                    Log.e(
-                        "SettingsCategoryUser",
-                        """
-                        [同步异常]
-                        错误类型：${e::class.simpleName}
-                        错误信息：${e.message}
-                        """.trimIndent(),
-                        e
-                    )
+                }
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) {
+                    Log.d("SettingsCategoryUser", "10分钟定时任务被最终取消")
+                } else {
+                    Log.e("SettingsCategoryUser", "10分钟定时任务异常：${e.message}", e)
                 }
             }
         }
 
         onDispose {
+            Log.d("SettingsCategoryUser", "DisposableEffect被处理，正在取消所有协程...")
             job1.cancel()
             job2.cancel()
+            Log.d("SettingsCategoryUser", "所有协程已取消")
         }
     }
 

@@ -1,3 +1,11 @@
+/**
+ * 统一缓存管理器
+ * 
+ * 此文件实现了核心缓存管理功能，是整个缓存系统的中枢。
+ * 负责缓存数据的存储、检索、更新和删除，同时管理内存缓存和持久化存储。
+ * 提供类型安全的数据转换，缓存预热，自动过期管理等高级功能。
+ * 通过策略模式和观察者模式，支持灵活的缓存策略和数据变更通知。
+ */
 package top.cywin.onetv.core.data.repositories.supabase.cache
 
 import android.content.Context
@@ -275,6 +283,75 @@ object SupabaseCacheManager {
                     return@withContext defaultValue
                 }
                 
+                // 特殊处理USER_SETTINGS类型，修复LinkedTreeMap到UserSettings类型转换问题
+                if (key == SupabaseCacheKey.USER_SETTINGS) {
+                    try {
+                        Log.d(TAG, "处理USER_SETTINGS类型，使用明确类型反序列化")
+                        
+                        // 首先尝试解析成通用类型
+                        val anyData = Gson().fromJson<Any>(json, Any::class.java)
+                        
+                        // 使用安全转换方法
+                        // 构建类型信息
+                        @Suppress("UNCHECKED_CAST")
+                        val userSettings = try {
+                            // 尝试获取正确的类型信息
+                            val typeToken = object : TypeToken<T>() {}.type
+                            when {
+                                defaultValue != null -> {
+                                    // 使用默认值的类型作为目标类型
+                                    safeConvertToType(anyData, defaultValue.javaClass as Class<T>, defaultValue)
+                                }
+                                typeToken is Class<*> -> {
+                                    // 直接使用类型作为Class
+                                    safeConvertToType(anyData, typeToken as Class<T>, null)
+                                }
+                                else -> {
+                                    // 回退到原始JSON处理
+                                    Log.d(TAG, "无法确定明确的类型，使用Gson直接解析")
+                                    val type = object : TypeToken<T>() {}.type
+                                    Gson().fromJson<T>(Gson().toJson(anyData), type)
+                                }
+                            }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "转换数据时出错: ${e.message}", e)
+                            defaultValue
+                        }
+                        
+                        if (userSettings != null) {
+                            // 检查数据有效性
+                            val config = cacheConfigs[key] ?: SupabaseCacheConfig.DEFAULT
+                            val strategy = config.toStrategy()
+                            val entry = SupabaseCacheEntry(
+                                data = userSettings as Any,
+                                createTime = createTime,
+                                strategy = strategy
+                            )
+                            
+                            if (entry.isValid()) {
+                                // 更新内存缓存
+                                synchronized(memoryCache) {
+                                    memoryCache[cacheKey] = entry
+                                }
+                                Log.d(TAG, "USER_SETTINGS反序列化成功 | 已安全转换为正确类型")
+                                return@withContext userSettings
+                            } else {
+                                Log.d(TAG, "USER_SETTINGS缓存已过期")
+                            }
+                        } else {
+                            Log.e(TAG, "USER_SETTINGS转换失败，无法获取有效的用户设置数据")
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "USER_SETTINGS反序列化失败: ${e.message}", e)
+                        // 清除无效缓存
+                        prefs.edit()
+                            .remove(key.keyName)
+                            .remove("${key.keyName}_time")
+                            .apply()
+                    }
+                    return@withContext defaultValue
+                }
+                
                 // 处理其他类型
                 val data: T = when {
                     // 处理原始类型
@@ -510,6 +587,48 @@ object SupabaseCacheManager {
         } catch (e: Exception) {
             Log.e(TAG, "转换数据到SupabaseUserDataIptv时出错: ${e.message}", e)
             null
+        }
+    }
+    
+    /**
+     * 安全地将任何缓存对象转换为通用类型
+     * 处理LinkedTreeMap到指定类型的转换问题
+     * 
+     * @param data 任何类型的数据对象
+     * @param targetClass 目标类型的Class对象
+     * @param defaultValue 默认值，如果转换失败则返回此值
+     * @return 转换后的对象，如果转换失败则返回defaultValue
+     */
+    fun <T : Any> safeConvertToType(data: Any?, targetClass: Class<T>, defaultValue: T? = null): T? {
+        if (data == null) return defaultValue
+        
+        return try {
+            when {
+                targetClass.isInstance(data) -> {
+                    Log.d(TAG, "数据已经是${targetClass.simpleName}类型，无需转换")
+                    targetClass.cast(data)
+                }
+                data is Map<*, *> -> {
+                    Log.d(TAG, "检测到Map类型（可能是LinkedTreeMap），转换为${targetClass.simpleName}")
+                    val gson = Gson()
+                    val json = gson.toJson(data)
+                    gson.fromJson(json, targetClass)
+                }
+                else -> {
+                    Log.w(TAG, "未知数据类型: ${data.javaClass.name}，尝试强制转换为${targetClass.simpleName}")
+                    try {
+                        val gson = Gson()
+                        val json = gson.toJson(data)
+                        gson.fromJson(json, targetClass)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "转换为${targetClass.simpleName}失败: ${e.message}", e)
+                        defaultValue
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "转换数据到${targetClass.simpleName}时出错: ${e.message}", e)
+            defaultValue
         }
     }
     

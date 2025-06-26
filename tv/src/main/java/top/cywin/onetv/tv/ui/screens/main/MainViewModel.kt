@@ -174,6 +174,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             Log.d("MainViewModel", "开始退出登录流程")
             
+            // 在登出前先同步观看历史到服务器
+            withContext(Dispatchers.IO) {
+                try {
+                    Log.d("MainViewModel", "退出登录前开始同步观看历史到服务器")
+                    val syncCount = SupabaseWatchHistorySyncService.syncToServer(appContext)
+                    Log.d("MainViewModel", "退出登录前成功同步 $syncCount 条观看记录到服务器")
+                } catch (e: Exception) {
+                    Log.e("MainViewModel", "退出登录前同步观看历史失败", e)
+                }
+            }
+            
             // 在IO线程上执行清除会话和缓存的操作
             withContext(Dispatchers.IO) {
                 try {

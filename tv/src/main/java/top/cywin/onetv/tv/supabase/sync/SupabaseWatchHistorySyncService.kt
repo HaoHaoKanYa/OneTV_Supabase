@@ -400,7 +400,7 @@ object SupabaseWatchHistorySyncService {
                 SupabaseWatchHistorySessionManager.reloadFromLocal(context)
 
                 // 注意：根据项目设定，只有在用户退出或应用退出时才上传本地数据到服务器
-                // 这里不应该自动上传本地数据，移除自动上传逻辑
+                // 这里不应该自动上传本地数据
                 if (pendingLocalItems.isNotEmpty()) {
                     Log.d(TAG, "发现 ${pendingLocalItems.size} 条本地待同步记录，但根据项目设定，只在用户/应用退出时上传")
                 }
@@ -409,11 +409,10 @@ object SupabaseWatchHistorySyncService {
             } else {
                 Log.d(TAG, "服务器没有新记录需要合并")
                 
-                // 如果有本地待同步记录，尝试同步到服务器
+                // 修复错误：移除自动上传逻辑
+                // 根据项目设定，不应该在这里自动同步记录，而应该只在应用退出或账号退出时同步
                 if (pendingLocalItems.isNotEmpty()) {
-                    Log.d(TAG, "尝试将 ${pendingLocalItems.size} 条本地记录同步到服务器")
-                    val syncCount = syncToServer(context, pendingLocalItems)
-                    Log.d(TAG, "成功同步 $syncCount 条记录到服务器")
+                    Log.d(TAG, "发现 ${pendingLocalItems.size} 条本地待同步记录，但根据项目设定，只在用户/应用退出时上传")
                 }
                 
                 return@withContext true

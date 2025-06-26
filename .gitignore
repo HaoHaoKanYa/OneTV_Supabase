@@ -104,7 +104,7 @@ application.properties
 /build/
 /release
 /sentry.properties
-/OneTV_Supabase _Key
+/OneTV_Supabase_Key
 /app/build/
 /*/build/
 .gradle/

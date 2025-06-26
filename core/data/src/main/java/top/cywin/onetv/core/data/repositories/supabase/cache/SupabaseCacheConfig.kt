@@ -1,3 +1,10 @@
+/**
+ * 缓存配置定义
+ * 
+ * 此文件定义了缓存的配置参数，包括过期时间、随机偏移和存储方式。
+ * 通过不同的预设配置(VIP_30_DAYS, SERVICE_INFO等)，为不同类型的数据提供合适的缓存策略。
+ * 每个配置都可以转换为对应的缓存策略(SupabaseCacheStrategy)以实际应用。
+ */
 package top.cywin.onetv.core.data.repositories.supabase.cache
 
 /**

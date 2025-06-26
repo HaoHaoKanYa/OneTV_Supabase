@@ -1,3 +1,10 @@
+/**
+ * 缓存条目实现
+ * 
+ * 此文件定义了缓存的基本单位，包含实际缓存的数据和相关元数据。
+ * 提供缓存有效性检查、剩余时间计算和时间格式化等功能。
+ * 每个缓存项都有自己的创建时间和过期策略，用于管理其生命周期。
+ */
 package top.cywin.onetv.core.data.repositories.supabase.cache
 
 import java.text.SimpleDateFormat

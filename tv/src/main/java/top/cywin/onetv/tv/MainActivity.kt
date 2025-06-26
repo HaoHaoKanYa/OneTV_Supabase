@@ -64,7 +64,6 @@ import top.cywin.onetv.tv.supabase.SupabaseCacheManager
 import top.cywin.onetv.core.data.repositories.supabase.SupabaseApiClient
 import top.cywin.onetv.core.data.repositories.supabase.SupabaseRepository
 import kotlinx.coroutines.Job
-import top.cywin.onetv.tv.supabase.SupabaseVideoPlayerWatchHistoryTracker
 
 class MainActivity : ComponentActivity() {
     private val TAG = "MainActivity"

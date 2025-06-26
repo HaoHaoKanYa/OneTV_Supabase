@@ -1,3 +1,10 @@
+/**
+ * 缓存键定义
+ * 
+ * 此文件定义了所有缓存键及其对应的SharedPreferences存储位置。
+ * 通过枚举形式组织，确保缓存键的一致性和可维护性。
+ * 提供了获取用户相关键和服务相关键的辅助方法，便于分组操作缓存。
+ */
 package top.cywin.onetv.core.data.repositories.supabase.cache
 
 /**

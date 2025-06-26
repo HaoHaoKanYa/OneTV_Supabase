@@ -95,9 +95,24 @@ object SupabaseUserSettingsSessionManager {
      * @return 用户设置，如果缓存中没有则返回null
      */
     suspend fun getCachedUserSettings(context: Context): UserSettings? = withContext(Dispatchers.IO) {
-        val settings = SupabaseCacheManager.getCache<UserSettings>(context, SupabaseCacheKey.USER_SETTINGS)
-        Log.d(TAG, "读取缓存设置: ${settings?.userId ?: "空"}")
-        return@withContext settings
+        try {
+            val settings = SupabaseCacheManager.getCache<UserSettings>(context, SupabaseCacheKey.USER_SETTINGS)
+            Log.d(TAG, "读取缓存设置: ${settings?.userId ?: "空"}")
+            return@withContext settings
+        } catch (e: Exception) {
+            // 捕获类型转换异常等错误
+            Log.e(TAG, "读取用户设置缓存失败，可能是类型转换错误: ${e.message}", e)
+            
+            // 尝试清除错误的缓存
+            try {
+                SupabaseCacheManager.clearCache(context, SupabaseCacheKey.USER_SETTINGS)
+                Log.d(TAG, "已清除无效的用户设置缓存")
+            } catch (clearEx: Exception) {
+                Log.e(TAG, "清除无效缓存失败", clearEx)
+            }
+            
+            return@withContext null
+        }
     }
     
     /**

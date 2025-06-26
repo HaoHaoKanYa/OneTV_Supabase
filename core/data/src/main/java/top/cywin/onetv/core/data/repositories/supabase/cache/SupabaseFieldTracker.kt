@@ -1,3 +1,10 @@
+/**
+ * 字段变化跟踪器
+ * 
+ * 此文件实现了数据字段变化的跟踪功能，超越了基于时间的缓存策略。
+ * 通过对比当前数据和缓存数据的关键字段，即使缓存未过期，也能在重要数据变化时触发更新。
+ * 支持用户资料、设置等复杂对象的智能比较，提高缓存系统的准确性和响应性。
+ */
 package top.cywin.onetv.core.data.repositories.supabase.cache
 
 import android.content.Context
