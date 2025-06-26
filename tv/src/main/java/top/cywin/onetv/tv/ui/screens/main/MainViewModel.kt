@@ -42,6 +42,7 @@ import top.cywin.onetv.core.data.utils.ChannelUtil
 import top.cywin.onetv.core.data.utils.Constants
 import top.cywin.onetv.core.data.entities.epg.EpgList
 import top.cywin.onetv.core.data.repositories.epg.EpgRepository
+import top.cywin.onetv.tv.supabase.sync.SupabaseAppExitSyncManager
 import top.cywin.onetv.tv.supabase.sync.SupabaseWatchHistorySyncService
 import top.cywin.onetv.tv.ui.material.Snackbar
 import top.cywin.onetv.tv.ui.material.SnackbarType
@@ -179,7 +180,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             withContext(Dispatchers.IO) {
                 try {
                     Log.d("MainViewModel", "退出登录前开始同步观看历史到服务器")
-                    val syncCount = SupabaseWatchHistorySyncService.syncToServer(appContext)
+                    val syncCount = SupabaseAppExitSyncManager.performExitSync(appContext)
                     Log.d("MainViewModel", "退出登录前成功同步 $syncCount 条观看记录到服务器")
                 } catch (e: Exception) {
                     Log.e("MainViewModel", "退出登录前同步观看历史失败", e)

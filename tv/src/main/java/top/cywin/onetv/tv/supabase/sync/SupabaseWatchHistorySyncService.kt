@@ -5,6 +5,8 @@ import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.Serializable
@@ -35,10 +37,14 @@ import kotlinx.serialization.json.intOrNull
  */
 object SupabaseWatchHistorySyncService {
     private const val TAG = "WatchHistorySyncService"
-    
+
+    // 同步锁，防止并发同步导致重复上传
+    private val syncLock = Mutex()
+    private var isSyncing = false
+
     // JSON序列化工具
-    private val json = Json { 
-        ignoreUnknownKeys = true 
+    private val json = Json {
+        ignoreUnknownKeys = true
         prettyPrint = false
         isLenient = true
     }
@@ -68,21 +74,48 @@ object SupabaseWatchHistorySyncService {
      * @return 成功同步的记录数
      */
     suspend fun syncToServer(context: Context, items: List<WatchHistoryItem>? = null): Int = withContext(Dispatchers.IO) {
-        Log.d(TAG, "开始同步观看历史到服务器")
-        
-        // 获取用户ID
-        val userId = SupabaseSessionManager.getCachedUserData(context)?.userid
-        if (userId == null) {
-            Log.e(TAG, "同步失败: 未获取到用户ID")
+        // 检查是否已有同步在进行
+        if (isSyncing) {
+            Log.d(TAG, "同步正在进行中，跳过此次请求")
             return@withContext 0
         }
+
+        // 使用锁保护同步过程
+        return@withContext syncLock.withLock {
+            if (isSyncing) {
+                Log.d(TAG, "同步正在进行中（锁内检查），跳过此次请求")
+                return@withLock 0
+            }
+
+            isSyncing = true
+            try {
+                Log.d(TAG, "开始同步观看历史到服务器")
+
+                // 获取用户ID
+                val userId = SupabaseSessionManager.getCachedUserData(context)?.userid
+                if (userId == null) {
+                    Log.e(TAG, "同步失败: 未获取到用户ID")
+                    return@withLock 0
+                }
+
+                performSyncToServer(context, userId, items)
+            } finally {
+                isSyncing = false
+            }
+        }
+    }
+
+    /**
+     * 执行实际的同步操作
+     */
+    private suspend fun performSyncToServer(context: Context, userId: String, items: List<WatchHistoryItem>? = null): Int {
         
         // 获取本地观看历史数据
         val historyJson = getHistoryJson(context)
         
         if (historyJson.isNullOrBlank()) {
             Log.d(TAG, "本地无观看历史数据，无需同步")
-            return@withContext 0
+            return 0
         }
         
         // 解析本地数据
@@ -100,7 +133,7 @@ object SupabaseWatchHistorySyncService {
             }
         } catch (e: Exception) {
             Log.e(TAG, "解析本地历史数据失败", e)
-            return@withContext 0
+            return 0
         }
         
         // 改进的同步逻辑：不仅基于ID格式，还要检查记录的实际内容
@@ -158,7 +191,7 @@ object SupabaseWatchHistorySyncService {
 
         if (pendingItems.isEmpty()) {
             Log.d(TAG, "没有需要同步的观看历史记录")
-            return@withContext 0
+            return 0
         }
 
         Log.d(TAG, "发现 ${pendingItems.size} 条需要同步的观看历史记录（已去除服务器重复）")
@@ -194,7 +227,7 @@ object SupabaseWatchHistorySyncService {
             SupabaseWatchHistorySessionManager.reloadFromLocal(context)
         }
         
-        return@withContext syncCount
+        return syncCount
     }
     
     /**

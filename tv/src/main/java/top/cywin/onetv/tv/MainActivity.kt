@@ -48,6 +48,7 @@ import top.cywin.onetv.core.data.BuildConfig
 import top.cywin.onetv.core.data.repositories.supabase.SupabaseEnvChecker
 import top.cywin.onetv.tv.supabase.SupabaseVideoPlayerWatchHistoryTracker
 import top.cywin.onetv.tv.supabase.SupabaseWatchHistorySessionManager
+import top.cywin.onetv.tv.supabase.sync.SupabaseAppExitSyncManager
 import top.cywin.onetv.tv.supabase.sync.SupabaseWatchHistorySyncService
 import top.cywin.onetv.tv.ui.App
 import top.cywin.onetv.tv.ui.screens.main.MainUiState
@@ -178,13 +179,13 @@ class MainActivity : ComponentActivity() {
             try {
                 Log.d(TAG, "正在同步观看历史到服务器...")
                 val startTime = System.currentTimeMillis()
-                val count = SupabaseWatchHistorySyncService.syncToServer(applicationContext)
+                val count = SupabaseAppExitSyncManager.performExitSync(applicationContext)
                 val endTime = System.currentTimeMillis()
                 Log.d(TAG, "成功同步 $count 条观看记录, 耗时 ${endTime - startTime}ms")
-                
+
                 // 延迟一下，确保异步操作有机会完成
                 kotlinx.coroutines.delay(500)
-                
+
                 Log.d(TAG, "应用准备退出")
                 finish()
                 Log.d(TAG, "应用已调用finish, 即将完全退出")
@@ -220,7 +221,7 @@ class MainActivity : ComponentActivity() {
         appScope.launch {
             try {
                 Log.d(TAG, "onDestroy 中同步观看历史")
-                val count = SupabaseWatchHistorySyncService.syncToServer(applicationContext)
+                val count = SupabaseAppExitSyncManager.performExitSync(applicationContext)
                 Log.d(TAG, "onDestroy 中成功同步 $count 条观看记录")
             } catch (e: Exception) {
                 Log.e(TAG, "应用销毁时同步观看历史失败", e)

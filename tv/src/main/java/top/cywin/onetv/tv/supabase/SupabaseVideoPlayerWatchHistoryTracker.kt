@@ -9,6 +9,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import top.cywin.onetv.core.data.entities.channel.Channel
+import top.cywin.onetv.tv.supabase.sync.SupabaseAppExitSyncManager
 import top.cywin.onetv.tv.supabase.sync.SupabaseWatchHistorySyncService
 
 /**
@@ -282,7 +283,7 @@ class SupabaseVideoPlayerWatchHistoryTracker(
      */
     suspend fun syncToServer(): Int = withContext(Dispatchers.IO) {
         Log.d(TAG, "[WatchTracker] 开始手动同步观看历史到服务器")
-        
+
         // 先保存当前记录
         if (isTracking && watchDuration >= MIN_RECORD_DURATION) {
             Log.d(TAG, "[WatchTracker] 同步前先保存当前观看记录: ${currentChannel?.name}, 时长=${watchDuration}秒")
@@ -290,11 +291,11 @@ class SupabaseVideoPlayerWatchHistoryTracker(
             // 给saveWatchHistory一点时间完成
             delay(500)
         }
-        
-        // 同步到服务器
+
+        // 使用SupabaseAppExitSyncManager确保只同步一次
         try {
-            Log.d(TAG, "[WatchTracker] 调用SupabaseWatchHistorySyncService.syncToServer同步所有本地缓存数据")
-            val count = SupabaseWatchHistorySyncService.syncToServer(context)
+            Log.d(TAG, "[WatchTracker] 调用SupabaseAppExitSyncManager.performExitSync执行退出同步")
+            val count = SupabaseAppExitSyncManager.performExitSync(context)
             Log.d(TAG, "[WatchTracker] 成功同步 $count 条观看记录到服务器")
             return@withContext count
         } catch (e: Exception) {
