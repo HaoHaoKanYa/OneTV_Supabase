@@ -137,4 +137,69 @@ object SupabaseCacheManager {
     suspend fun preheatUserCache(context: Context, userId: String, forceServer: Boolean = false) {
         CoreCacheManager.preheatUserCache(context, userId, forceServer)
     }
+    
+    /**
+     * 获取原始缓存数据，不进行类型转换
+     * 用于需要手动进行类型转换的场景
+     * @param context 应用上下文
+     * @param key 缓存键
+     * @return 原始缓存对象，可能是任意类型
+     */
+    suspend fun getRawCache(context: Context, key: SupabaseCacheKey): Any? {
+        return CoreCacheManager.getRawCache(context, key)
+    }
+    
+    /**
+     * 获取原始缓存数据的同步版本
+     * @param context 应用上下文
+     * @param key 缓存键
+     * @return 原始缓存对象，可能是任意类型
+     */
+    fun getRawCacheSync(context: Context, key: SupabaseCacheKey): Any? {
+        return kotlinx.coroutines.runBlocking {
+            getRawCache(context, key)
+        }
+    }
+    
+    /**
+     * 安全地将任何缓存对象转换为通用类型
+     * 处理LinkedTreeMap到指定类型的转换问题
+     * 
+     * @param data 任何类型的数据对象
+     * @param targetClass 目标类型的Class对象
+     * @param defaultValue 默认值，如果转换失败则返回此值
+     * @return 转换后的对象，如果转换失败则返回defaultValue
+     */
+    fun <T : Any> safeConvertToType(data: Any?, targetClass: Class<T>, defaultValue: T? = null): T? {
+        if (data == null) return defaultValue
+        
+        return try {
+            when {
+                targetClass.isInstance(data) -> {
+                    Log.d(TAG, "数据已经是${targetClass.simpleName}类型，无需转换")
+                    targetClass.cast(data)
+                }
+                data is Map<*, *> -> {
+                    Log.d(TAG, "检测到Map类型（可能是LinkedTreeMap），转换为${targetClass.simpleName}")
+                    val gson = com.google.gson.Gson()
+                    val json = gson.toJson(data)
+                    gson.fromJson(json, targetClass)
+                }
+                else -> {
+                    Log.w(TAG, "未知数据类型: ${data.javaClass.name}，尝试强制转换为${targetClass.simpleName}")
+                    try {
+                        val gson = com.google.gson.Gson()
+                        val json = gson.toJson(data)
+                        gson.fromJson(json, targetClass)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "转换为${targetClass.simpleName}失败: ${e.message}", e)
+                        defaultValue
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "转换数据到${targetClass.simpleName}时出错: ${e.message}", e)
+            defaultValue
+        }
+    }
 } 

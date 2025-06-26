@@ -77,41 +77,55 @@ serve(async (req) => {
         // 处理批量上传
         if (action === 'batch') {
           console.log("处理批量上传观看历史记录");
-          
+
           if (!Array.isArray(body.records)) {
             return new Response(
               JSON.stringify({ success: false, error: 'Missing records array' }),
               { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
             )
           }
-          
+
           const records = body.records;
           const validRecords = [];
-          
+          const recordHashes = new Set(); // 用于检查本批次内的重复记录
+
           // 验证并准备记录
           for (const record of records) {
             const { channelName, channelUrl, watchStart, watchEnd, duration } = record;
-            
+
             // 记录原始数据用于调试
             console.log(`处理记录: 频道=${channelName}, URL=${channelUrl?.substring(0, 30)}..., 时长=${duration}`);
-            
+
             // 验证必要参数
             if (!channelName || !channelUrl || !duration || duration <= 0) {
               console.log(`跳过无效记录: ${JSON.stringify(record)}, 原因: ${!channelName ? '无频道名' : !channelUrl ? '无URL' : '无效时长'}`);
               continue;
             }
-            
+
+            // 生成记录的唯一标识（基于关键字段）
+            const recordHash = `${userId}_${channelName}_${channelUrl}_${watchStart || new Date(new Date().getTime() - duration * 1000).toISOString()}`;
+
+            // 检查本批次内是否有重复记录
+            if (recordHashes.has(recordHash)) {
+              console.log(`跳过本批次内重复记录: 频道=${channelName}, 时长=${duration}`);
+              continue;
+            }
+            recordHashes.add(recordHash);
+
+            const watchStartTime = watchStart || new Date(new Date().getTime() - duration * 1000).toISOString();
+            const watchEndTime = watchEnd || new Date().toISOString();
+
             validRecords.push({
               user_id: userId,
               channel_name: channelName,
               channel_url: channelUrl,
-              watch_start: watchStart || new Date(new Date().getTime() - duration * 1000).toISOString(),
-              watch_end: watchEnd || new Date().toISOString(),
+              watch_start: watchStartTime,
+              watch_end: watchEndTime,
               duration: duration,
               created_at: new Date().toISOString()
             });
           }
-          
+
           if (validRecords.length === 0) {
             console.log("没有有效记录可插入");
             return new Response(
@@ -119,15 +133,68 @@ serve(async (req) => {
               { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
             )
           }
-          
-          console.log(`准备插入 ${validRecords.length} 条有效记录`);
-          
-          // 批量插入记录
+
+          console.log(`准备插入 ${validRecords.length} 条有效记录（已去除本批次内重复）`);
+
+          // 检查数据库中是否已存在相同记录
+          let newRecords = [];
+          let duplicateCount = 0;
+
+          for (const record of validRecords) {
+            try {
+              // 检查是否已存在相同的记录（基于用户ID、频道名、频道URL、观看开始时间）
+              const { data: existingRecords, error: checkError } = await supabaseClient
+                .from('watch_history')
+                .select('id')
+                .eq('user_id', record.user_id)
+                .eq('channel_name', record.channel_name)
+                .eq('channel_url', record.channel_url)
+                .eq('watch_start', record.watch_start)
+                .limit(1);
+
+              if (checkError) {
+                console.error(`检查重复记录失败: ${checkError.message}`);
+                // 如果检查失败，仍然尝试插入（让数据库约束处理）
+                newRecords.push(record);
+              } else if (!existingRecords || existingRecords.length === 0) {
+                // 记录不存在，可以插入
+                newRecords.push(record);
+              } else {
+                // 记录已存在，跳过
+                duplicateCount++;
+                console.log(`跳过已存在记录: 频道=${record.channel_name}, 开始时间=${record.watch_start}`);
+              }
+            } catch (e) {
+              console.error(`检查记录时出错: ${e.message}`);
+              // 出错时仍然尝试插入
+              newRecords.push(record);
+            }
+          }
+
+          console.log(`去重后需要插入的新记录数: ${newRecords.length}, 跳过重复记录数: ${duplicateCount}`);
+
+          if (newRecords.length === 0) {
+            console.log("所有记录都已存在，无需插入");
+            return new Response(
+              JSON.stringify({
+                success: true,
+                message: "所有记录都已存在",
+                data: {
+                  inserted: 0,
+                  duplicates: duplicateCount,
+                  total: validRecords.length
+                }
+              }),
+              { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            )
+          }
+
+          // 批量插入新记录
           const { data, error } = await supabaseClient
             .from('watch_history')
-            .insert(validRecords)
+            .insert(newRecords)
             .select()
-          
+
           if (error) {
             console.error("批量插入观看历史记录失败:", error);
             return new Response(
@@ -135,14 +202,17 @@ serve(async (req) => {
               { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
             )
           }
-          
-          console.log(`成功批量插入 ${validRecords.length} 条观看历史记录`);
+
+          console.log(`成功批量插入 ${newRecords.length} 条观看历史记录，跳过 ${duplicateCount} 条重复记录`);
           return new Response(
-            JSON.stringify({ 
-              success: true, 
-              data: { 
-                inserted: validRecords.length,
-                records: data 
+            JSON.stringify({
+              success: true,
+              message: `成功插入 ${newRecords.length} 条记录，跳过 ${duplicateCount} 条重复记录`,
+              data: {
+                inserted: newRecords.length,
+                duplicates: duplicateCount,
+                total: validRecords.length,
+                records: data
               }
             }),
             { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -150,9 +220,9 @@ serve(async (req) => {
         } else {
           // 处理单条记录
           const { channelName, channelUrl, duration } = body
-          
+
           console.log(`记录观看历史: ${channelName}, 时长: ${duration}秒`);
-          
+
           // 验证必要参数
           if (!channelName || !channelUrl || duration === undefined || duration <= 0) {
             console.log(`无效参数: 频道=${channelName}, URL=${channelUrl ? '有值' : '无值'}, 时长=${duration}`);
@@ -161,15 +231,49 @@ serve(async (req) => {
               { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
             )
           }
-          
+
           // 记录观看历史
           const now = new Date().toISOString()
-          
+
           // 计算开始时间（根据结束时间和持续时间）
           const startTime = new Date(new Date().getTime() - duration * 1000).toISOString()
-          
-          console.log(`插入记录: 频道=${channelName}, 开始=${startTime}, 结束=${now}, 时长=${duration}秒`);
-          
+
+          console.log(`准备插入记录: 频道=${channelName}, 开始=${startTime}, 结束=${now}, 时长=${duration}秒`);
+
+          // 检查是否已存在相同记录
+          try {
+            const { data: existingRecords, error: checkError } = await supabaseClient
+              .from('watch_history')
+              .select('id')
+              .eq('user_id', userId)
+              .eq('channel_name', channelName)
+              .eq('channel_url', channelUrl)
+              .eq('watch_start', startTime)
+              .limit(1);
+
+            if (checkError) {
+              console.error(`检查重复记录失败: ${checkError.message}`);
+              // 如果检查失败，仍然尝试插入
+            } else if (existingRecords && existingRecords.length > 0) {
+              console.log(`记录已存在，跳过插入: 频道=${channelName}, 开始时间=${startTime}`);
+              return new Response(
+                JSON.stringify({
+                  success: true,
+                  message: "记录已存在，跳过插入",
+                  data: {
+                    duplicate: true,
+                    existing_id: existingRecords[0].id
+                  }
+                }),
+                { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+              )
+            }
+          } catch (e) {
+            console.error(`检查记录时出错: ${e.message}`);
+            // 出错时仍然尝试插入
+          }
+
+          // 插入新记录
           const { data, error } = await supabaseClient
             .from('watch_history')
             .insert({
@@ -182,7 +286,7 @@ serve(async (req) => {
               created_at: now
             })
             .select()
-          
+
           if (error) {
             console.error("插入观看历史记录失败:", error);
             return new Response(
@@ -190,10 +294,17 @@ serve(async (req) => {
               { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
             )
           }
-          
+
           console.log("成功记录观看历史");
           return new Response(
-            JSON.stringify({ success: true, data }),
+            JSON.stringify({
+              success: true,
+              message: "成功插入新记录",
+              data: {
+                duplicate: false,
+                record: data
+              }
+            }),
             { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           )
         }

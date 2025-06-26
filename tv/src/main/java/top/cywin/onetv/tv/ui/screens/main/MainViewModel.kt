@@ -42,6 +42,7 @@ import top.cywin.onetv.core.data.utils.ChannelUtil
 import top.cywin.onetv.core.data.utils.Constants
 import top.cywin.onetv.core.data.entities.epg.EpgList
 import top.cywin.onetv.core.data.repositories.epg.EpgRepository
+import top.cywin.onetv.tv.supabase.sync.SupabaseWatchHistorySyncService
 import top.cywin.onetv.tv.ui.material.Snackbar
 import top.cywin.onetv.tv.ui.material.SnackbarType
 import top.cywin.onetv.tv.ui.utils.Configs

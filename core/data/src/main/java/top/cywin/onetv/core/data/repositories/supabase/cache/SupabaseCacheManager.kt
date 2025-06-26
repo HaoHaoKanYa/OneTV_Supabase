@@ -439,7 +439,50 @@ object SupabaseCacheManager {
     }
     
     /**
-     * 清除指定缓存
+     * 获取原始缓存数据（不进行类型转换）
+     * 主要用于处理类型转换可能出错的情况，获取原始数据后可以使用safeConvertToType进行安全转换
+     * 
+     * @param context 应用上下文
+     * @param key 缓存键
+     * @return 原始缓存数据，可能是LinkedTreeMap等类型
+     */
+    suspend fun getRawCache(
+        context: Context,
+        key: SupabaseCacheKey
+    ): Any? = withContext(Dispatchers.IO) {
+        val cacheKey = getCacheKey(key)
+        
+        // 首先尝试从内存缓存获取
+        val memoryEntry = synchronized(memoryCache) { 
+            memoryCache[cacheKey]
+        }
+        
+        if (memoryEntry != null && memoryEntry.isValid()) {
+            Log.d(TAG, "从内存缓存获取原始数据 | 键：${key.name} | 创建时间：${memoryEntry.getFormattedCreateTime()}")
+            return@withContext memoryEntry.data
+        }
+        
+        // 如果内存缓存不存在或已过期，尝试从持久化存储获取
+        val prefs = context.getSharedPreferences(key.prefsName, Context.MODE_PRIVATE)
+        val json = prefs.getString(key.keyName, null)
+        
+        if (json != null) {
+            try {
+                // 解析为原始数据类型（通常是LinkedTreeMap或ArrayList）
+                val rawData = Gson().fromJson<Any>(json, Any::class.java)
+                Log.d(TAG, "从持久化存储获取原始数据 | 键：${key.name} | 类型：${rawData?.javaClass?.simpleName}")
+                return@withContext rawData
+            } catch (e: Exception) {
+                Log.e(TAG, "解析原始缓存数据失败 | 键：${key.name}", e)
+            }
+        }
+        
+        Log.d(TAG, "未找到原始缓存数据 | 键：${key.name}")
+        return@withContext null
+    }
+    
+    /**
+     * 清除指定的缓存
      * @param context 应用上下文
      * @param key 缓存键
      */
@@ -463,7 +506,7 @@ object SupabaseCacheManager {
             .remove(key.keyName)
             .remove("${key.keyName}_time")
             .apply()
-        
+            
         // 更新数据流
         updateCacheFlow(cacheKey, null)
         
@@ -552,7 +595,7 @@ object SupabaseCacheManager {
     
     /**
      * 安全地将任何缓存对象转换为SupabaseUserDataIptv类型
-     * 处理LinkedTreeMap到SupabaseUserDataIptv的转换问题
+     * 专门处理LinkedTreeMap到SupabaseUserDataIptv的转换问题
      * 
      * @param data 任何类型的数据对象
      * @return 转换后的SupabaseUserDataIptv对象，如果转换失败则返回null

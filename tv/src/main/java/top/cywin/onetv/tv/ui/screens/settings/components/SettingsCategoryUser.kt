@@ -25,7 +25,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -156,79 +155,104 @@ fun SettingsCategoryUser(
     // 获取当前用户会话信息，直接使用SupabaseCacheManager
     var session by remember { mutableStateOf<String?>(null) }
     var userData by remember { mutableStateOf<SupabaseUserDataIptv?>(null) }
+    var showImage by remember { mutableStateOf(false) }
+    var isLoading by remember { mutableStateOf(false) }
     
-    // 使用LaunchedEffect加载会话数据
+    // 监听 Toast 消息
+    LaunchedEffect(Unit) {
+        mainViewModel.toastMessage.collect { message ->
+            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+        }
+    }
+    
+    BackHandler(enabled = showImage) {
+        showImage = false
+    }
+    
+    DonationImageDialog(
+        showImage = showImage,
+        onDismiss = { showImage = false }
+    )
+    
+    // 使用标准缓存加载方式
     LaunchedEffect(Unit) {
         try {
-            Log.d("SettingsCategoryUser", "开始加载缓存数据...")
-        session = SupabaseCacheManager.getCache(context, SupabaseCacheKey.SESSION)
-            val cachedData = SupabaseCacheManager.getCache<Any>(context, SupabaseCacheKey.USER_DATA)
+            // 获取会话数据
+            session = SupabaseCacheManager.getCache(context, SupabaseCacheKey.SESSION)
             
-            // 添加类型检查和转换逻辑
-            if (cachedData != null) {
-                userData = when (cachedData) {
-                    is SupabaseUserDataIptv -> {
-                        Log.d("SettingsCategoryUser", "缓存数据类型正确，直接使用")
-                        cachedData
-                    }
-                    is Map<*, *> -> {
-                        Log.d("SettingsCategoryUser", "检测到LinkedTreeMap类型，进行转换")
-                        // 将Map转换为JSON再转换为SupabaseUserDataIptv对象
-                        val gson = Gson()
-                        val json = gson.toJson(cachedData)
-                        val convertedData = gson.fromJson(json, SupabaseUserDataIptv::class.java)
-                        
-                        // 重新保存正确类型的数据到缓存
-                        withContext(Dispatchers.IO) {
-                            SupabaseCacheManager.saveCache(
-                                context = context,
-                                key = SupabaseCacheKey.USER_DATA,
-                                data = convertedData,
-                                strategy = SupabaseCacheManager.getUserCacheStrategy(convertedData)
-                            )
-                            Log.d("SettingsCategoryUser", "已将转换后的数据重新保存到缓存")
-                        }
-                        
-                        convertedData
-                    }
-                    else -> {
-                        Log.w("SettingsCategoryUser", "未知的缓存数据类型: ${cachedData.javaClass.name}")
-                        null
-                    }
-                }
-                
-                Log.d("SettingsCategoryUser", "缓存数据加载完成：${userData?.username ?: "未知用户"}")
+            // 安全获取用户数据：先获取原始数据，然后进行安全转换
+            val rawUserData = SupabaseCacheManager.getRawCache(context, SupabaseCacheKey.USER_DATA)
+            if (rawUserData != null) {
+                // 使用安全转换方法
+                userData = SupabaseCacheManager.safeConvertToUserData(rawUserData)
+                Log.d("SettingsCategoryUser", "用户数据安全转换${if (userData != null) "成功: ${userData?.username}" else "失败"}")
             } else {
-                Log.d("SettingsCategoryUser", "缓存中没有用户数据，将尝试从服务器获取")
+                Log.d("SettingsCategoryUser", "未找到用户数据缓存")
             }
-        
-        // 如果有会话但没有用户数据，尝试刷新用户数据
-        if (session != null && userData == null) {
-            withContext(Dispatchers.IO) {
-                try {
-                    Log.d("SettingsCategoryUser", "开始从服务器获取用户数据...")
-                    val userRepo = SupabaseUserRepository()
-                    val freshData = userRepo.getUserData(session!!)
-
-                    Log.d("SettingsCategoryUser", "服务器数据获取成功，类型：${freshData.javaClass.name}")
-                    
-                    // 保存到缓存
-                    SupabaseCacheManager.saveCache(
-                        context = context,
-                        key = SupabaseCacheKey.USER_DATA,
-                        data = freshData
-                    )
-                    
-                    // 更新UI数据
-                    userData = freshData
-                    Log.d("SettingsCategoryUser", "刷新用户数据成功: ${freshData.username}")
-                } catch (e: Exception) {
-                        Log.e("SettingsCategoryUser", "刷新用户数据失败: ${e.message}", e)
-                }
-            }
-            }
+            
+            Log.d("SettingsCategoryUser",
+                "[缓存加载] userId=${userData?.userid ?: "空"}｜" +
+                        "VIP状态：${userData?.is_vip ?: false}")
         } catch (e: Exception) {
-            Log.e("SettingsCategoryUser", "加载用户数据时发生异常: ${e.message}", e)
+            Log.e("SettingsCategoryUser", "加载缓存数据异常: ${e.javaClass.simpleName} - ${e.message}", e)
+        }
+    }
+
+    // 根据会话变化检测是否需要刷新数据，使用统一缓存策略
+    LaunchedEffect(session) {
+        // 如果有会话但没有用户数据，尝试从服务器加载
+        if (session != null) {
+            // 检查缓存是否有效
+            val isCacheValid = SupabaseCacheManager.isValid(context, SupabaseCacheKey.USER_DATA)
+            
+            Log.d("SettingsCategoryUser", "缓存检查 - 是否有效：$isCacheValid")
+            
+            // 若缓存无效或不存在，则从服务器加载最新数据
+            if (userData == null || !isCacheValid) {
+                session?.let {
+                    isLoading = true
+                    try {
+                        Log.d("SettingsCategoryUser", "开始从服务器加载用户数据...")
+                        // 使用SupabaseUserRepository
+                        val newData = withContext(Dispatchers.IO) {
+                            SupabaseUserRepository().getUserData(it).also { data ->
+                                Log.d("SettingsCategoryUser", "服务器数据获取成功，开始缓存｜userId=${data.userid}")
+                                
+                                // 使用SupabaseCacheManager保存用户数据
+                                SupabaseCacheManager.saveCache(
+                                    context = context,
+                                    key = SupabaseCacheKey.USER_DATA,
+                                    data = data,
+                                    strategy = SupabaseCacheManager.getUserCacheStrategy(data)
+                                )
+                                
+                                Log.d("SettingsCategoryUser", "缓存保存完成｜数据长度：${Gson().toJson(data).length}")
+                            }
+                        }
+                        userData = newData
+                    } catch (e: Exception) {
+                        Log.e("SettingsCategoryUser", "数据加载异常: ${e.javaClass.simpleName} - ${e.message}", e)
+                        // 尝试使用缓存数据
+                        val cachedData = SupabaseCacheManager.getCache<SupabaseUserDataIptv>(context, SupabaseCacheKey.USER_DATA)
+                        if (cachedData != null) {
+                            userData = cachedData
+                            Log.w("SettingsCategoryUser", "使用最后一次有效缓存数据：${cachedData.userid}")
+                        }
+                        // 401错误处理
+                        if (e.message?.contains("401") == true) {
+                            Log.w("SettingsCategoryUser", "检测到会话过期，触发全局清理")
+                            mainViewModel.clearAllCache(true) {
+                                Log.d("SettingsCategoryUser", "清理完成，开始强制刷新数据")
+                                mainViewModel.forceRefreshUserData()
+                            }
+                        }
+                    } finally {
+                        isLoading = false
+                    }
+                }
+            } else {
+                Log.d("SettingsCategoryUser", "使用本地缓存数据: ${userData?.userid}")
+            }
         }
     }
 
@@ -470,70 +494,73 @@ private fun UnloggedContent(
  *
  * @param onLogout 退出登录的回调函数
  * @param onNavigateToProfile 导航到个人中心的回调函数
- *
- * 缓存逻辑说明：
- * - 使用 lastLoadedTime 记录最后一次从服务器加载数据的时间（单位：毫秒）
- * - 如果用户数据为空或当前时间与 lastLoadedTime 差值超过30天，则重新加载用户数据
- * - 刷新按钮点击时也会强制刷新数据并更新 lastLoadedTime
  */
 @Composable
 private fun UserInfoView(
     onLogout: () -> Unit,
-    onNavigateToProfile: (() -> Unit)? = null // 新增可选参数
+    onNavigateToProfile: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     // 直接使用SupabaseCacheManager
     var session by remember { mutableStateOf<String?>(null) }
-    // 使用SupabaseUserDataIptv代替UserDataIptv
     var userData by remember { mutableStateOf<SupabaseUserDataIptv?>(null) }
-    var lastLoadedTime by remember { mutableStateOf(0L) }
+    var isLoading by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     var showImage by remember { mutableStateOf(false) }
     // 获取 MainViewModel
     val mainViewModel: MainViewModel = viewModel()
+    
     // 监听 Toast 消息
     LaunchedEffect(Unit) {
         mainViewModel.toastMessage.collect { message ->
             Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
         }
     }
+    
     BackHandler(enabled = showImage) {
         showImage = false
     }
+    
     DonationImageDialog(
         showImage = showImage,
         onDismiss = { showImage = false }
     )
+    
+    // 使用标准缓存加载方式
     LaunchedEffect(Unit) {
-        // 直接使用SupabaseCacheManager获取数据
-        session = SupabaseCacheManager.getCache(context, SupabaseCacheKey.SESSION)
-        userData = SupabaseCacheManager.getCache(context, SupabaseCacheKey.USER_DATA)
-        lastLoadedTime = SupabaseCacheManager.getCache(context, SupabaseCacheKey.LAST_LOADED_TIME) ?: 0L
-        // +++ 新增日志 0329+++
-        Log.d("SettingsCategoryUser",
-            "[缓存加载] userId=${userData?.userid ?: "空"}｜" +
-                    "时间：${formatBeijingTime(lastLoadedTime)}｜" +
-                    "VIP状态：${userData?.is_vip ?: false}")
+        try {
+            // 获取会话数据
+            session = SupabaseCacheManager.getCache(context, SupabaseCacheKey.SESSION)
+            
+            // 安全获取用户数据：先获取原始数据，然后进行安全转换
+            val rawUserData = SupabaseCacheManager.getRawCache(context, SupabaseCacheKey.USER_DATA)
+            if (rawUserData != null) {
+                // 使用安全转换方法
+                userData = SupabaseCacheManager.safeConvertToUserData(rawUserData)
+                Log.d("SettingsCategoryUser", "用户数据安全转换${if (userData != null) "成功: ${userData?.username}" else "失败"}")
+            } else {
+                Log.d("SettingsCategoryUser", "未找到用户数据缓存")
+            }
+            
+            Log.d("SettingsCategoryUser",
+                "[缓存加载] userId=${userData?.userid ?: "空"}｜" +
+                        "VIP状态：${userData?.is_vip ?: false}")
+        } catch (e: Exception) {
+            Log.e("SettingsCategoryUser", "加载缓存数据异常: ${e.javaClass.simpleName} - ${e.message}", e)
+        }
     }
-    var isLoading by remember { mutableStateOf(false) }
 
-    // 根据会话变化检测是否需要刷新数据，VIP30天缓存机制，普通注册用户无需要刷新
+    // 根据会话变化检测是否需要刷新数据，使用统一缓存策略
     LaunchedEffect(session) {
-        // 如果有会话但没有用户数据，尝试从缓存加载
-        if (session != null && userData == null) {
-            userData = SupabaseCacheManager.getCache(context, SupabaseCacheKey.USER_DATA)
-            lastLoadedTime = SupabaseCacheManager.getCache(context, SupabaseCacheKey.LAST_LOADED_TIME) ?: 0L
-            val currentTime = System.currentTimeMillis()
-            
+        // 如果有会话但没有用户数据，尝试从服务器加载
+        if (session != null) {
             // 检查缓存是否有效
-            val isCacheExpired = !SupabaseCacheManager.isValid(context, SupabaseCacheKey.USER_DATA)
+            val isCacheValid = SupabaseCacheManager.isValid(context, SupabaseCacheKey.USER_DATA)
             
-            Log.d("SettingsCategoryUser", "缓存检查 - 当前时间：${formatBeijingTime(currentTime)} " +
-                    "| 最后加载时间：${if (lastLoadedTime == 0L) "未记录" else formatBeijingTime(lastLoadedTime)} " +
-                    "| 是否过期：$isCacheExpired")
+            Log.d("SettingsCategoryUser", "缓存检查 - 是否有效：$isCacheValid")
             
-            // 若缓存需要刷新，则从服务器加载最新数据
-            if (userData == null || isCacheExpired) {
+            // 若缓存无效或不存在，则从服务器加载最新数据
+            if (userData == null || !isCacheValid) {
                 session?.let {
                     isLoading = true
                     try {
@@ -551,24 +578,19 @@ private fun UserInfoView(
                                     strategy = SupabaseCacheManager.getUserCacheStrategy(data)
                                 )
                                 
-                                // 保存最后加载时间
-                                SupabaseCacheManager.saveCache(
-                                    context = context,
-                                    key = SupabaseCacheKey.LAST_LOADED_TIME,
-                                    data = System.currentTimeMillis()
-                                )
-                                
-                                Log.d("SettingsCategoryUser", "缓存保存完成｜新时间：${formatBeijingTime(System.currentTimeMillis())}｜数据长度：${Gson().toJson(data).length}")
+                                Log.d("SettingsCategoryUser", "缓存保存完成｜数据长度：${Gson().toJson(data).length}")
                             }
                         }
                         userData = newData
                     } catch (e: Exception) {
                         Log.e("SettingsCategoryUser", "数据加载异常: ${e.javaClass.simpleName} - ${e.message}", e)
+                        // 尝试使用缓存数据
                         val cachedData = SupabaseCacheManager.getCache<SupabaseUserDataIptv>(context, SupabaseCacheKey.USER_DATA)
                         if (cachedData != null) {
                             userData = cachedData
                             Log.w("SettingsCategoryUser", "使用最后一次有效缓存数据：${cachedData.userid}")
                         }
+                        // 401错误处理
                         if (e.message?.contains("401") == true) {
                             Log.w("SettingsCategoryUser", "检测到会话过期，触发全局清理")
                             mainViewModel.clearAllCache(true) {
@@ -581,48 +603,7 @@ private fun UserInfoView(
                     }
                 }
             } else {
-                Log.d("SettingsCategoryUser", "使用本地缓存数据: ${userData?.userid}｜缓存时间：${formatBeijingTime(lastLoadedTime)}")
-            }
-        }
-    }
-
-    // 定时检测缓存是否过期（每5分钟检查一次）
-    LaunchedEffect(Unit) {
-        while (true) {
-            delay(300000)
-            val currentTime = System.currentTimeMillis()
-            val lastLoaded = SupabaseCacheManager.getCache<Long>(context, SupabaseCacheKey.LAST_LOADED_TIME) ?: 0L
-            Log.d("SettingsCategoryUser", "定时检查 - 当前时间：${formatBeijingTime(currentTime)} | 最后加载时间：${formatBeijingTime(lastLoaded)}")
-            
-            // 使用SupabaseCacheManager检查缓存是否有效
-            val isCacheValid = SupabaseCacheManager.isValid(context, SupabaseCacheKey.USER_DATA)
-            if (!isCacheValid) {
-                Log.d("SettingsCategoryUser", "定时检测到缓存过期，自动刷新")
-                session?.let {
-                    try {
-                        val newData = withContext(Dispatchers.IO) {
-                            SupabaseUserRepository().getUserData(it)
-                        }
-                        // 使用SupabaseCacheManager保存用户数据
-                        SupabaseCacheManager.saveCache(
-                            context = context,
-                            key = SupabaseCacheKey.USER_DATA,
-                            data = newData,
-                            strategy = SupabaseCacheManager.getUserCacheStrategy(newData)
-                        )
-                        
-                        // 保存最后加载时间
-                        SupabaseCacheManager.saveCache(
-                            context = context,
-                            key = SupabaseCacheKey.LAST_LOADED_TIME,
-                            data = System.currentTimeMillis()
-                        )
-                        
-                        userData = newData
-                    } catch (e: Exception) {
-                        Log.e("SettingsCategoryUser", "定时刷新失败", e)
-                    }
-                }
+                Log.d("SettingsCategoryUser", "使用本地缓存数据: ${userData?.userid}")
             }
         }
     }
@@ -743,71 +724,12 @@ private fun UserInfoView(
                                         Log.d("SettingsCategoryUser", "⚡ 用户手动触发刷新")
                                         isLoading = true
 
-                                        // 在IO线程执行网络请求
-                                        withContext(Dispatchers.IO) {
-                                            try {
-                                                Log.d("SettingsCategoryUser", "开始从服务器刷新用户数据...")
-                                                val userRepo = SupabaseUserRepository()
-                                                val freshData = userRepo.getUserData(session!!)
-                                                
-                                                Log.d("SettingsCategoryUser", "服务器数据获取成功: ${freshData.username}")
-                                                
-                                                // 确保数据类型正确并保存到缓存
-                                                SupabaseCacheManager.saveCache(
-                                                    context = context,
-                                                    key = SupabaseCacheKey.USER_DATA,
-                                                    data = freshData,
-                                                    strategy = SupabaseCacheManager.getUserCacheStrategy(freshData)
-                                                )
-                                                
-                                                // 更新最后加载时间
-                                                SupabaseCacheManager.saveCache(
-                                                    context = context,
-                                                    key = SupabaseCacheKey.LAST_LOADED_TIME,
-                                                    data = System.currentTimeMillis()
-                                                )
-                                                
-                                                // 在主线程更新UI
-                                                withContext(Dispatchers.Main) {
-                                                    userData = freshData
-                                                    Log.d("SettingsCategoryUser", "🔄 本地数据已更新｜用户ID: ${freshData.userid}")
-                                                }
-                                            } catch (e: Exception) {
-                                                Log.e("SettingsCategoryUser", "刷新用户数据失败: ${e.message}", e)
-                                                
-                                                // 失败时尝试从缓存加载
-                                                val cachedData = SupabaseCacheManager.getCache<Any>(context, SupabaseCacheKey.USER_DATA)
-                                        if (cachedData != null) {
-                                                    withContext(Dispatchers.Main) {
-                                                        userData = when (cachedData) {
-                                                            is SupabaseUserDataIptv -> {
-                                                                Log.d("SettingsCategoryUser", "使用缓存中的SupabaseUserDataIptv数据")
-                                                                cachedData
-                                                            }
-                                                            is Map<*, *> -> {
-                                                                Log.d("SettingsCategoryUser", "缓存中的数据为Map类型，进行转换")
-                                                                val gson = Gson()
-                                                                val json = gson.toJson(cachedData)
-                                                                gson.fromJson(json, SupabaseUserDataIptv::class.java)
-                                                            }
-                                                            else -> {
-                                                                Log.w("SettingsCategoryUser", "未知的缓存数据类型: ${cachedData.javaClass.name}")
-                                                                null
-                                                            }
-                                                        }
-                                                        Log.w("SettingsCategoryUser", "刷新失败，使用缓存数据: ${userData?.username ?: "未知用户"}")
-                                                    }
-                                                }
-                                                
-                                                withContext(Dispatchers.Main) {
-                                                    mainViewModel.showToast("刷新失败: ${e.message}")
-                                                }
-                                            }
-                                        }
-
-                                        // 1. 调用ViewModel的统一刷新方法
-                                        mainViewModel.forceRefreshUserData() // 内部已包含Toast提示
-
+                                        // 使用统一方法强制刷新
+                                        mainViewModel.forceRefreshUserData()
+                                        
+                                        // 重新获取最新数据
+                                        userData = SupabaseCacheManager.getCache(context, SupabaseCacheKey.USER_DATA)
+                                        
                                         isLoading = false
                                         mainViewModel.showToast("信息已刷新")
                                     } catch (e: Exception) {
@@ -845,12 +767,9 @@ private fun UserInfoView(
 /**
 * 优化后的服务器信息框组件
 *
-* @param height 容器高度
 * @param textColor 文字颜色
 * @param fontSize 字体大小
 * @param modifier 修饰符
-* @param borderWidth 边框宽度（已弃用，保留参数兼容性）
-* @param verticalPadding 垂直内边距（已弃用，保留参数兼容性）
 * @param dividerThickness 分隔线厚度（单位：dp）新增可调参数
 * @param dividerColor 分隔线颜色 新增可调参数
 * @param dividerVerticalMargin 分隔线垂直外边距（单位：dp）新增可调参数
@@ -868,12 +787,12 @@ private fun ServerInfoBox(
     var serviceText by remember { mutableStateOf("加载中...") }
     var isLoading by remember { mutableStateOf(false) }
     val context = LocalContext.current
-    // 替换为SupabaseOnlineUsersSessionManager
+    // 使用SupabaseOnlineUsersSessionManager
     val onlineManager = remember { SupabaseOnlineUsersSessionManager.getInstance(context) }
-    // 修改数据类型为SupabaseOnlineUsersData
+    // 使用SupabaseOnlineUsersData类型
     var displayData by remember { mutableStateOf<SupabaseOnlineUsersData?>(null) }
-    var isLoadingData by remember { mutableStateOf(true) } // 新增加载状态
-
+    var isLoadingData by remember { mutableStateOf(true) }
+    
     // 北京时间格式化工具
     val timeFormat = remember {
         SimpleDateFormat("HH时mm分ss秒", Locale.CHINA).apply {
@@ -885,28 +804,37 @@ private fun ServerInfoBox(
             timeZone = TimeZone.getTimeZone("GMT+8")
         }
     }
-    fun calculateNextInterval(): Long {
-        return 60L * 60 * 1000 // 严格每小时一次，使用Long类型
-    }
-    // 初始化服务信息加载
-    //LaunchedEffect(Unit) {
-      //  isLoading = true
-     //   serviceText = ServiceInfoManager.loadServiceInfo(context)
-       // isLoading = false
-    //}
+
+    // 初始化服务信息 - 使用SupabaseCacheManager
     LaunchedEffect(Unit) {
-        // +++ 新增：先显示缓存 +++
-        val cachedText = SupabaseServiceInfoManager.loadServiceInfo(context)
+        // 先加载缓存
+        val cachedText = SupabaseCacheManager.getCache<String>(
+            context, 
+            SupabaseCacheKey.SERVICE_INFO, 
+            "加载中..."
+        ) ?: "加载中..."
         serviceText = cachedText
         Log.d("SettingsCategoryUser", "[首次加载] 使用缓存内容：${cachedText.take(20)}...")
 
-        // 异步检查更新
-        launch {
+        // 检查缓存是否需要刷新
+        val isCacheValid = SupabaseCacheManager.isValid(context, SupabaseCacheKey.SERVICE_INFO)
+        if (!isCacheValid) {
+            // 异步加载最新内容
             isLoading = true
             try {
                 val latestText = SupabaseServiceInfoManager.loadServiceInfo(context)
                 if (latestText != cachedText) {
                     serviceText = latestText
+                    // 更新缓存
+                    SupabaseCacheManager.saveCache(
+                        context = context, 
+                        key = SupabaseCacheKey.SERVICE_INFO, 
+                        data = latestText,
+                        strategy = SupabaseCacheStrategy.TimeStrategy(
+                            expireTime = 3 * 24 * 60 * 60 * 1000L, // 3天
+                            randomOffset = 12 * 60 * 60 * 1000L // ±12小时
+                        )
+                    )
                     Log.d("SettingsCategoryUser", "[后台更新] 内容已刷新")
                 }
             } finally {
@@ -914,173 +842,134 @@ private fun ServerInfoBox(
             }
         }
     }
-    // 数据初始化加载 (带最小加载时间保证)
-    LaunchedEffect(onlineManager) {
+
+    // 在线人数加载 - 使用SupabaseCacheManager
+    LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
-            displayData = onlineManager.getCachedData() // 保持数据加载
-            delay(800) // 保证至少800ms加载时间,在线人数加载显示UI
-            isLoadingData = false // 在线人数加载显示UI
+            try {
+                // 先尝试获取原始缓存数据，然后进行安全转换
+                val rawCachedData = SupabaseCacheManager.getRawCache(context, SupabaseCacheKey.ONLINE_USERS)
+                if (rawCachedData != null) {
+                    // 安全转换为SupabaseOnlineUsersData
+                    val safeData = SupabaseCacheManager.safeConvertToType<SupabaseOnlineUsersData>(
+                        rawCachedData,
+                        SupabaseOnlineUsersData::class.java
+                    )
+                    if (safeData != null) {
+                        displayData = safeData
+                        Log.d("SettingsCategoryUser", "[在线用户] 安全转换成功，使用缓存数据: ${safeData.total}人")
+                    } else {
+                        Log.d("SettingsCategoryUser", "[在线用户] 缓存数据转换失败，将重新获取")
+                        // 清除可能损坏的缓存
+                        SupabaseCacheManager.clearCache(context, SupabaseCacheKey.ONLINE_USERS)
+                    }
+                }
+                
+                // 检查缓存是否需要刷新
+                val isCacheValid = SupabaseCacheManager.isValid(context, SupabaseCacheKey.ONLINE_USERS)
+                if (!isCacheValid || displayData == null) {
+                    try {
+                        // 获取最新数据 - 修改为使用getCachedData方法
+                        val freshData = onlineManager.getCachedData(true)
+                        if (freshData != null) {
+                            // 更新显示
+                            displayData = freshData
+                            // 更新缓存
+                            SupabaseCacheManager.saveCache(
+                                context = context,
+                                key = SupabaseCacheKey.ONLINE_USERS,
+                                data = freshData,
+                                strategy = SupabaseCacheStrategy.TimeStrategy(
+                                    expireTime = 1 * 60 * 60 * 1000L, // 1小时
+                                    randomOffset = 10 * 60 * 1000L // ±10分钟
+                                )
+                            )
+                            Log.d("SettingsCategoryUser", "[在线用户] 数据已刷新: ${freshData.total}人")
+                        }
+                    } catch (e: Exception) {
+                        Log.e("SettingsCategoryUser", "获取在线用户数据失败: ${e.message}", e)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("SettingsCategoryUser", "在线用户数据处理异常: ${e.message}", e)
+            } finally {
+                // 延迟短暂时间显示加载动画
+                delay(800)
+                isLoadingData = false
+            }
         }
     }
 
-    // 增强版定时刷新逻辑 - 使用DisposableEffect避免LeftCompositionCancellationException
-    val coroutineScope = rememberCoroutineScope()
-
+    // 定时刷新逻辑 - 使用协程的周期性任务
     DisposableEffect(Unit) {
-        // 整点同步
-        // 启动双重定时器
-        val job1 = coroutineScope.launch(Dispatchers.IO) { // 整点同步
-            try {
-                var attemptCount = 0
-                while (isActive) { // 使用isActive检查协程是否被取消
-                    try {
-                        // 1. 计算下次刷新时间
-                        val nextHourTime = calculateNextHourTime()
-                        val delayMs = nextHourTime - System.currentTimeMillis()
-
-                        // 新增调试日志
-                        Log.d(
-                            "SettingsCategoryUser",
-                            """
-                            [定时器状态] 
-                            当前时间：${timeFormat.format(Date())}
-                            下次触发：${timeFormat.format(Date(nextHourTime))}
-                            延迟时间：${delayMs}ms
-                            尝试次数：${++attemptCount}
-                            """.trimIndent()
-                        )
-
-                        if (delayMs > 0) {
-                            delay(delayMs)
-                        }
-
-                        // 检查协程是否被取消
-                        if (!isActive) break
-
-                        // 2. 执行同步
-                        Log.d("SettingsCategoryUser", "[整点触发] 开始同步...")
-                        val newData = onlineManager.getCachedData()
-                        Log.d(
-                            "SettingsCategoryUser",
-                            """
-                            [同步结果] 
-                            total=${newData.total} 
-                            base=${newData.base}
-                            real=${newData.real} 
-                            updated=${timeFormat.format(Date(newData.updated * 1000L))}
-                            """.trimIndent()
-                        )
-
-                        // 检查协程是否被取消
-                        if (!isActive) break
-
-                        // 3. 更新UI数据
-                        withContext(Dispatchers.Main) {
-                            if (isActive) { // 在UI更新前再次检查
-                                displayData = newData
-                            }
-                        }
-
-                        // 4. 等待下一个周期
-                        delay(calculateNextInterval())
-                    } catch (e: Exception) {
-                        if (e is kotlinx.coroutines.CancellationException) {
-                            Log.d("SettingsCategoryUser", "整点同步任务被取消")
-                            break // 正常取消，退出循环
-                        }
+        val scope = kotlinx.coroutines.CoroutineScope(Dispatchers.IO)
+        
+        // 周期性检查缓存是否过期，而不是强制按时间刷新
+        val job = scope.launch {
+            while (true) {
+                try {
+                    // 每10分钟检查一次
+                    delay(10 * 60 * 1000L)
+                    
+                    // 检查在线用户缓存
+                    if (!SupabaseCacheManager.isValid(context, SupabaseCacheKey.ONLINE_USERS)) {
+                        Log.d("SettingsCategoryUser", "[定时检查] 在线用户缓存过期，刷新数据")
                         
-                        Log.e(
-                            "SettingsCategoryUser",
-                            """
-                            [同步异常] 
-                            错误类型：${e.javaClass.simpleName}
-                            错误信息：${e.message}
-                            """.trimIndent(),
-                            e
-                        )
-                        if (isActive) {
-                            delay(30000) // 异常后等待30秒重试，但前提是协程仍然活跃
-                        } else {
-                            break
+                        try {
+                            val freshData = onlineManager.getCachedData(true)
+                            if (freshData != null) {
+                                displayData = freshData
+                                // 更新缓存
+                                SupabaseCacheManager.saveCache(
+                                    context = context,
+                                    key = SupabaseCacheKey.ONLINE_USERS,
+                                    data = freshData,
+                                    strategy = SupabaseCacheStrategy.TimeStrategy(
+                                        expireTime = 1 * 60 * 60 * 1000L,
+                                        randomOffset = 10 * 60 * 1000L
+                                    )
+                                )
+                            }
+                        } catch (e: Exception) {
+                            Log.e("SettingsCategoryUser", "刷新在线用户数据失败", e)
                         }
                     }
-                }
-            } catch (e: Exception) {
-                if (e is kotlinx.coroutines.CancellationException) {
-                    Log.d("SettingsCategoryUser", "整点同步任务被最终取消")
-                } else {
-                    Log.e("SettingsCategoryUser", "整点同步任务异常：${e.message}", e)
+                    
+                    // 检查服务信息缓存
+                    if (!SupabaseCacheManager.isValid(context, SupabaseCacheKey.SERVICE_INFO)) {
+                        Log.d("SettingsCategoryUser", "[定时检查] 服务信息缓存过期，刷新数据")
+                        
+                        try {
+                            val latestText = SupabaseServiceInfoManager.loadServiceInfo(context)
+                            serviceText = latestText
+                            // 更新缓存
+                            SupabaseCacheManager.saveCache(
+                                context = context,
+                                key = SupabaseCacheKey.SERVICE_INFO,
+                                data = latestText,
+                                strategy = SupabaseCacheStrategy.TimeStrategy(
+                                    expireTime = 3 * 24 * 60 * 60 * 1000L,
+                                    randomOffset = 12 * 60 * 60 * 1000L
+                                )
+                            )
+                        } catch (e: Exception) {
+                            Log.e("SettingsCategoryUser", "刷新服务信息失败", e)
+                        }
+                    }
+                } catch (e: Exception) {
+                    if (e is kotlinx.coroutines.CancellationException) {
+                        Log.d("SettingsCategoryUser", "定时检查任务被取消")
+                        break
+                    }
+                    Log.e("SettingsCategoryUser", "定时检查任务异常", e)
+                    delay(30000) // 错误后延迟30秒再试
                 }
             }
         }
-
-        // 10分钟定时器
-        val job2 = coroutineScope.launch(Dispatchers.IO) {
-            try {
-                while (isActive) { // 使用isActive检查协程是否被取消
-                    try {
-                        delay(10L * 60 * 1000) // 10分钟
-                        
-                        // 检查协程是否被取消
-                        if (!isActive) break
-                        
-                        Log.d("SettingsCategoryUser", "[定时刷新] 每10分钟更新...")
-
-                        val newData = onlineManager.getCachedData()
-                        Log.d(
-                            "SettingsCategoryUser",
-                            """
-                            [定时刷新结果]
-                            total=${newData.total}
-                            base=${newData.base}
-                            real=${newData.real}
-                            """.trimIndent()
-                        )
-
-                        // 检查协程是否被取消
-                        if (!isActive) break
-
-                        withContext(Dispatchers.Main) {
-                            if (isActive) { // 在UI更新前再次检查
-                                displayData = newData
-                            }
-                        }
-                    } catch (e: Exception) {
-                        if (e is kotlinx.coroutines.CancellationException) {
-                            Log.d("SettingsCategoryUser", "10分钟定时任务被取消")
-                            break // 正常取消，退出循环
-                        }
-                        
-                        Log.e(
-                            "SettingsCategoryUser",
-                            """
-                            [同步异常]
-                            错误类型：${e::class.simpleName}
-                            错误信息：${e.message}
-                            """.trimIndent(),
-                            e
-                        )
-                        if (isActive) {
-                            delay(30000) // 异常后等待30秒重试，但前提是协程仍然活跃
-                        } else {
-                            break
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                if (e is kotlinx.coroutines.CancellationException) {
-                    Log.d("SettingsCategoryUser", "10分钟定时任务被最终取消")
-                } else {
-                    Log.e("SettingsCategoryUser", "10分钟定时任务异常：${e.message}", e)
-                }
-            }
-        }
-
+        
         onDispose {
-            Log.d("SettingsCategoryUser", "DisposableEffect被处理，正在取消所有协程...")
-            job1.cancel()
-            job2.cancel()
-            Log.d("SettingsCategoryUser", "所有协程已取消")
+            job.cancel()
+            Log.d("SettingsCategoryUser", "取消定时刷新任务")
         }
     }
 
@@ -1294,7 +1183,27 @@ private fun ServerInfoBox(
     }
 }
 
-
+// 获取最后更新时间 - 修改为使用SupabaseCacheManager
+private fun getLastUpdated(context: Context): String {
+    val lastUpdated: Long
+    
+    try {
+        // 在非协程上下文中安全调用
+        val prefs = context.getSharedPreferences("supabase_cache", Context.MODE_PRIVATE)
+        lastUpdated = prefs.getLong("${SupabaseCacheKey.SERVICE_INFO_LAST_LOADED.name}_timestamp", 0L)
+    } catch (e: Exception) {
+        Log.e("SettingsCategoryUser", "获取最后更新时间失败", e)
+        return "暂无记录"
+    }
+    
+    return if (lastUpdated > 0) {
+        SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.CHINA).apply {
+            timeZone = TimeZone.getTimeZone("GMT+8")
+        }.format(Date(lastUpdated))
+    } else {
+        "暂无记录"
+    }
+}
 
 // 保留原有辅助函数
 private fun calculateNextHourTime(): Long {
@@ -1315,24 +1224,6 @@ private fun formatNumber(number: Int): String {
     }
 }
 
-
-
-private fun getLastUpdated(context: Context): String {
-    // 修改使用 supabase_service_cache 键
-    val prefs = context.getSharedPreferences("supabase_service_cache", Context.MODE_PRIVATE)
-    val timestamp = prefs.getLong("last_updated", 0)
-
-    return if (timestamp > 0) {
-        // 处理秒级时间戳
-        SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.CHINA).apply {
-            timeZone = TimeZone.getTimeZone("GMT+8")
-        }.format(Date(timestamp * 1000)) // 乘以1000转换为毫秒
-    } else {
-        "暂无记录"
-    }
-}
-
-// ... UserInfoView 和 InfoRow 保持不变 ...
 @Composable
 private fun InfoRow(label: String, value: String) {
     Row(
@@ -1459,27 +1350,6 @@ private fun CardButton(
                             colors = listOf(
                                 containerColor,
                                 containerColor.copy(alpha = 0.8f)
-                            )
-                        )
-                    }
-                )
-                // 修复 border 修饰符的语法
-                .border(
-                    width = if (isFocused) 2.5.dp else 0.dp,
-                    brush = if (isFocused) {
-                        Brush.sweepGradient(
-                            colors = listOf(
-                                Color(0xFFFFD700),
-                                Color(0xFFD4AF37),
-                                Color(0xFFFFC107),
-                                Color(0xFFFFD700)
-                            )
-                        )
-                    } else {
-                        Brush.linearGradient(
-                            colors = listOf(
-                                Color(0xFFD4AF37),
-                                Color(0xFFD4AF37)
                             )
                         )
                     },

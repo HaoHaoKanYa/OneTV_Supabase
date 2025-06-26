@@ -96,12 +96,52 @@ object SupabaseUserSettingsSessionManager {
      */
     suspend fun getCachedUserSettings(context: Context): UserSettings? = withContext(Dispatchers.IO) {
         try {
-            val settings = SupabaseCacheManager.getCache<UserSettings>(context, SupabaseCacheKey.USER_SETTINGS)
-            Log.d(TAG, "读取缓存设置: ${settings?.userId ?: "空"}")
-            return@withContext settings
+            // 获取原始缓存数据，不进行直接类型转换
+            val rawData = SupabaseCacheManager.getRawCache(context, SupabaseCacheKey.USER_SETTINGS)
+            if (rawData == null) {
+                Log.d(TAG, "用户设置缓存为空")
+                return@withContext null
+            }
+            
+            // 安全类型转换
+            return@withContext when (rawData) {
+                is UserSettings -> {
+                    Log.d(TAG, "读取缓存设置: ${rawData.userId}, 数据已是UserSettings类型")
+                    rawData
+                }
+                is Map<*, *> -> {
+                    Log.d(TAG, "检测到Map类型(可能是LinkedTreeMap)，进行安全转换")
+                    try {
+                        val gson = Gson()
+                        val json = gson.toJson(rawData)
+                        val settings = gson.fromJson(json, UserSettings::class.java)
+                        Log.d(TAG, "Map转换成功: ${settings.userId}")
+                        settings
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Map转换失败: ${e.message}", e)
+                        null
+                    }
+                }
+                else -> {
+                    Log.w(TAG, "未知数据类型: ${rawData.javaClass.name}，尝试强制转换")
+                    try {
+                        val gson = Gson()
+                        val json = gson.toJson(rawData)
+                        val settings = gson.fromJson(json, UserSettings::class.java)
+                        Log.d(TAG, "强制转换成功: ${settings.userId}")
+                        settings
+                    } catch (e: Exception) {
+                        Log.e(TAG, "强制转换失败: ${e.message}", e)
+                        // 清除可能损坏的缓存
+                        SupabaseCacheManager.clearCache(context, SupabaseCacheKey.USER_SETTINGS)
+                        Log.d(TAG, "已清除无效的用户设置缓存")
+                        null
+                    }
+                }
+            }
         } catch (e: Exception) {
-            // 捕获类型转换异常等错误
-            Log.e(TAG, "读取用户设置缓存失败，可能是类型转换错误: ${e.message}", e)
+            // 捕获其他未预期的异常
+            Log.e(TAG, "读取用户设置缓存失败: ${e.message}", e)
             
             // 尝试清除错误的缓存
             try {

@@ -21,6 +21,7 @@ import io.ktor.client.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
+import kotlinx.serialization.json.intOrNull
 
 /**
  * Supabase API客户端
@@ -722,7 +723,13 @@ class SupabaseApiClient {
                             when (data) {
                                 is JsonObject -> {
                                     when (val insertedField = data.jsonObject["inserted"]) {
-                                        is JsonPrimitive -> insertedField.content.toIntOrNull() ?: 0
+                                        is JsonPrimitive -> {
+                                            if (insertedField.isString) {
+                                                insertedField.content.toIntOrNull() ?: 0
+                                            } else {
+                                                insertedField.intOrNull ?: 0
+                                            }
+                                        }
                                         else -> 0
                                     }
                                 }
