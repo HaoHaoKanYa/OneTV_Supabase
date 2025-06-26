@@ -9,24 +9,3 @@
 
 </div>
 
-## 构建状态
-
-
-
-| 工作流 | 状态 |
-
-|-------|------|
-
-| Android CI | ![Android CI](https://github.com/HaoHaoKanYa/OneTV_Supabase/actions/workflows/android.yml/badge.svg) |
-
-| Release | ![Release](https://github.com/HaoHaoKanYa/OneTV_Supabase/actions/workflows/release.yaml/badge.svg) |
-
-| Supabase Deploy | ![Supabase Deploy](https://github.com/HaoHaoKanYa/OneTV_Supabase/actions/workflows/supabase-deploy.yml/badge.svg) |
-
-| Supabase Config | ![Supabase Config](https://github.com/HaoHaoKanYa/OneTV_Supabase/actions/workflows/check-supabase-config.yml/badge.svg) |
-
-
-
-
-
-OneTV 仅为技术演示应用，不提供任何直播源。用户需自行添加自定义直播源，并对使用内容负责。应用仅供个人学习和测试使用，请在 24 小时内删除。本项目不对任何因使用本软件而导致的问题负责。
