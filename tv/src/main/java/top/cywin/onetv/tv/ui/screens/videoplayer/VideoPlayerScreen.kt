@@ -91,7 +91,7 @@ private fun VideoPlayerScreenCover(
     }
 }
 
-@Preview(device = "id:Android TV (720p)") // 预览组件，显示在 720p Android TV 设备上
+@Preview(device = "spec:width=1280dp,height=720dp,dpi=213,isRound=false,chinSize=0dp,orientation=landscape") // 预览组件，显示在 720p Android TV 设备上
 @Composable
 private fun VideoPlayerScreenCoverPreview() {
     MyTVTheme { // 使用自定义主题

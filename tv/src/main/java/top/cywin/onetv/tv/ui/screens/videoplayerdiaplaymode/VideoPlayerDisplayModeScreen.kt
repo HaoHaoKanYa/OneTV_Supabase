@@ -43,7 +43,7 @@ fun VideoPlayerDisplayModeScreen( // 定义 VideoPlayerDisplayModeScreen 可组�
     }
 }
 
-@Preview(device = "id:Android TV (720p)") // 在Android TV 720p设备上进行预览
+@Preview(device = "spec:width=1280dp,height=720dp,dpi=213,isRound=false,chinSize=0dp,orientation=landscape") // 在Android TV 720p设备上进行预览
 @Composable // 该函数是一个可组合函数
 private fun VideoPlayerDisplayModeScreenPreview() { // 定义 VideoPlayerDisplayModeScreen 组件的预览函数
     MyTVTheme { // 使用 MyTVTheme 主题

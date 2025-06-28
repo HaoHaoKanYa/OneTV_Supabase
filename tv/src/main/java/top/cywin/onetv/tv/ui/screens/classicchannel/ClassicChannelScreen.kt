@@ -535,7 +535,7 @@ private fun ClassicPanelScreenShowEpgTip(
     }
 }
 
-@Preview(device = "id:Android TV (720p)")
+@Preview(device = "spec:width=1280dp,height=720dp,dpi=213,isRound=false,chinSize=0dp,orientation=landscape")
 @Composable
 fun ClassicChannelScreenPreview() {
     MyTVTheme {

@@ -163,7 +163,7 @@ fun rememberDebounce( // 创建并记住防抖对象
     LaunchedEffect(it) { it.observe() } // 启动协程观察防抖效果
 }
 
-@Preview(device = "id:Android TV (720p)")
+@Preview(device = "spec:width=1280dp,height=720dp,dpi=213,isRound=false,chinSize=0dp,orientation=landscape")
 @Composable
 private fun VideoPlayerControllerPositionCtrlPreview() { // 定义预览函数
     MyTVTheme { // 使用 MyTVTheme 主题

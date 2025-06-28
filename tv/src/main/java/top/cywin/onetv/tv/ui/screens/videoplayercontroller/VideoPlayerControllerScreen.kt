@@ -58,7 +58,7 @@ fun VideoPlayerControllerScreen( // 定义视频播放器控制器屏幕
     }
 }
 
-@Preview(device = "id:Android TV (720p)") // 设置预览，设备为 Android TV 720p
+@Preview(device = "spec:width=1280dp,height=720dp,dpi=213,isRound=false,chinSize=0dp,orientation=landscape") // 设置预览，设备为 Android TV 720p
 @Composable
 private fun VideoPlayerControllerScreenPreview() { // 定义预览函数
     MyTVTheme { // 使用 MyTVTheme 主题

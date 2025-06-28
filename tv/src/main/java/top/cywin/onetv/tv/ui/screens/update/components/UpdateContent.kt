@@ -82,7 +82,7 @@ fun UpdateContent(  // 定义更新内容的可组合函数
     }
 }
 
-@Preview(device = "id:Android TV (720p)")  // 预览，设置为720p电视设备
+@Preview(device = "spec:width=1280dp,height=720dp,dpi=213,isRound=false,chinSize=0dp,orientation=landscape")  // 预览，设置为720p电视设备
 @Composable  // 标记为 Compose 函数
 private fun UpdateDialogPreview() {  // 预览用的更新对话框
     MyTVTheme {  // 使用 MyTV 主题
