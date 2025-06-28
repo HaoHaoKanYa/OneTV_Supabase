@@ -84,6 +84,7 @@ import top.cywin.onetv.core.data.entities.epg.EpgProgrammeReserveList
 import top.cywin.onetv.tv.ui.material.Visible
 import top.cywin.onetv.tv.ui.screens.channel.ChannelScreenTopRight
 import top.cywin.onetv.tv.ui.screens.channel.components.ChannelInfo
+import top.cywin.onetv.tv.ui.screens.channel.components.ChannelUrlPanel
 import top.cywin.onetv.tv.ui.screens.classicchannel.components.ClassicChannelGroupItemList
 import top.cywin.onetv.tv.ui.screens.classicchannel.components.ClassicChannelItemList
 import top.cywin.onetv.tv.ui.screens.classicchannel.components.ClassicEpgItemList
@@ -300,7 +301,10 @@ fun ClassicChannelScreen(
     onChannelFavoriteListVisibleChange: (Boolean) -> Unit = {},
     onClose: () -> Unit = {},
     onShowMoreSettings: () -> Unit = {},
-    onNavigateToSettingsCategory: ((SettingsCategories) -> Unit)? = null
+    onNavigateToSettingsCategory: ((SettingsCategories) -> Unit)? = null,
+    // 多线路相关参数
+    showChannelUrlListProvider: () -> Boolean = { false },
+    onChannelUrlSelected: (String) -> Unit = {},
 ) {
     val screenAutoCloseState = rememberScreenAutoCloseState(onTimeout = onClose)
     val channelGroupList = channelGroupListProvider()
@@ -416,6 +420,18 @@ fun ClassicChannelScreen(
                 inFavoriteModeProvider = { focusedChannelGroup == ClassicPanelScreenFavoriteChannelGroup },
                 showChannelLogoProvider = showChannelLogoProvider
             )
+
+            // 多线路组件 - 放在频道列表和EPG之间
+            if (showChannelUrlListProvider()) {
+                ChannelUrlPanel(
+                    modifier = Modifier.width(320.dp),
+                    channelProvider = currentChannelProvider,
+                    currentUrlProvider = { currentChannelProvider().urlList[currentChannelUrlIdxProvider()] },
+                    onUrlSelected = onChannelUrlSelected,
+                    onUserAction = { screenAutoCloseState.active() },
+                )
+            }
+
             Visible({ epgListVisible }) {
                 ClassicEpgItemList(
                     epgProvider = { epgListProvider().match(focusedChannel) },

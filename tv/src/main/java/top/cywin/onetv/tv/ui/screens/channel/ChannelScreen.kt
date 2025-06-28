@@ -35,6 +35,7 @@ import top.cywin.onetv.tv.ui.screens.channel.components.ChannelInfo
 import top.cywin.onetv.tv.ui.screens.channel.components.ChannelItemGrid
 import top.cywin.onetv.tv.ui.screens.channel.components.ChannelItemGroupList
 import top.cywin.onetv.tv.ui.screens.channel.components.ChannelNumber
+import top.cywin.onetv.tv.ui.screens.channel.components.ChannelUrlPanel
 import top.cywin.onetv.tv.ui.screens.components.rememberScreenAutoCloseState
 import top.cywin.onetv.tv.ui.screens.datetime.components.DateTimeDetail
 import top.cywin.onetv.tv.ui.screens.videoplayer.player.VideoPlayer
@@ -60,42 +61,65 @@ fun ChannelScreen(
     channelFavoriteListProvider: () -> ImmutableList<String> = { persistentListOf() },
     channelFavoriteListVisibleProvider: () -> Boolean = { false },
     onChannelFavoriteListVisibleChange: (Boolean) -> Unit = {},
+    // 多线路相关参数
+    showChannelUrlListProvider: () -> Boolean = { false },
+    onChannelUrlSelected: (String) -> Unit = {},
     onClose: () -> Unit = {},
 ) {
     val screenAutoCloseState = rememberScreenAutoCloseState(onTimeout = onClose)
 
-    Box(
+    Row(
         modifier = modifier
             .fillMaxSize()
             .pointerInput(Unit) { detectTapGestures { onClose() } }
             .background(MaterialTheme.colorScheme.background.copy(alpha = 0.5f)),
     ) {
-        ChannelScreenTopRight(
-            channelNumberProvider = {
-                (channelGroupListProvider().channelIdx(currentChannelProvider()) + 1)
-                    .toString()
-                    .padStart(2, '0')
-            },
-        )
+        // 左侧：原有的频道列表
+        Box(
+            modifier = if (showChannelUrlListProvider()) {
+                Modifier.weight(1f)
+            } else {
+                Modifier.fillMaxSize()
+            }
+        ) {
+            ChannelScreenTopRight(
+                channelNumberProvider = {
+                    (channelGroupListProvider().channelIdx(currentChannelProvider()) + 1)
+                        .toString()
+                        .padStart(2, '0')
+                },
+            )
 
-        ChannelScreenBottom(
-            channelGroupListProvider = channelGroupListProvider,
-            currentChannelProvider = currentChannelProvider,
-            currentChannelUrlIdxProvider = currentChannelUrlIdxProvider,
-            showChannelLogoProvider = showChannelLogoProvider,
-            onChannelSelected = onChannelSelected,
-            onChannelFavoriteToggle = onChannelFavoriteToggle,
-            epgListProvider = epgListProvider,
-            showEpgProgrammeProgressProvider = showEpgProgrammeProgressProvider,
-            isInTimeShiftProvider = isInTimeShiftProvider,
-            currentPlaybackEpgProgrammeProvider = currentPlaybackEpgProgrammeProvider,
-            videoPlayerMetadataProvider = videoPlayerMetadataProvider,
-            channelFavoriteEnabledProvider = channelFavoriteEnabledProvider,
-            channelFavoriteListProvider = channelFavoriteListProvider,
-            channelFavoriteListVisibleProvider = channelFavoriteListVisibleProvider,
-            onChannelFavoriteListVisibleChange = onChannelFavoriteListVisibleChange,
-            onUserAction = { screenAutoCloseState.active() },
-        )
+            ChannelScreenBottom(
+                channelGroupListProvider = channelGroupListProvider,
+                currentChannelProvider = currentChannelProvider,
+                currentChannelUrlIdxProvider = currentChannelUrlIdxProvider,
+                showChannelLogoProvider = showChannelLogoProvider,
+                onChannelSelected = onChannelSelected,
+                onChannelFavoriteToggle = onChannelFavoriteToggle,
+                epgListProvider = epgListProvider,
+                showEpgProgrammeProgressProvider = showEpgProgrammeProgressProvider,
+                isInTimeShiftProvider = isInTimeShiftProvider,
+                currentPlaybackEpgProgrammeProvider = currentPlaybackEpgProgrammeProvider,
+                videoPlayerMetadataProvider = videoPlayerMetadataProvider,
+                channelFavoriteEnabledProvider = channelFavoriteEnabledProvider,
+                channelFavoriteListProvider = channelFavoriteListProvider,
+                channelFavoriteListVisibleProvider = channelFavoriteListVisibleProvider,
+                onChannelFavoriteListVisibleChange = onChannelFavoriteListVisibleChange,
+                onUserAction = { screenAutoCloseState.active() },
+            )
+        }
+
+        // 多线路组件 - 放在频道列表和EPG之间的位置
+        if (showChannelUrlListProvider()) {
+            ChannelUrlPanel(
+                modifier = Modifier.width(320.dp),
+                channelProvider = currentChannelProvider,
+                currentUrlProvider = { currentChannelProvider().urlList[currentChannelUrlIdxProvider()] },
+                onUrlSelected = onChannelUrlSelected,
+                onUserAction = { screenAutoCloseState.active() },
+            )
+        }
     }
 }
 

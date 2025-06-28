@@ -108,7 +108,10 @@ fun MainContent(
                         )
                     }
                 },
-                onSelect = { mainContentState.isChannelScreenVisible = true },
+                onSelect = {
+                    mainContentState.isChannelScreenVisible = true
+                    mainContentState.isMainChannelUrlScreenVisible = true
+                },
                 onLongSelect = { mainContentState.isQuickOpScreenVisible = true },
                 onSettings = { mainContentState.isQuickOpScreenVisible = true },
                 onLongLeft = { mainContentState.isEpgScreenVisible = true },
@@ -361,7 +364,10 @@ fun MainContent(
 
     PopupContent(
         visibleProvider = { mainContentState.isChannelScreenVisible && !settingsViewModel.uiUseClassicPanelScreen },
-        onDismissRequest = { mainContentState.isChannelScreenVisible = false },
+        onDismissRequest = {
+            mainContentState.isChannelScreenVisible = false
+            mainContentState.isMainChannelUrlScreenVisible = false
+        },
     ) {
         ChannelScreen(
             channelGroupListProvider = filteredChannelGroupListProvider,
@@ -370,6 +376,7 @@ fun MainContent(
             showChannelLogoProvider = { settingsViewModel.uiShowChannelLogo },
             onChannelSelected = {
                 mainContentState.isChannelScreenVisible = false
+                mainContentState.isMainChannelUrlScreenVisible = false
                 mainContentState.changeCurrentChannel(it)
             },
             onChannelFavoriteToggle = { mainContentState.favoriteChannelOrNot(it) },
@@ -383,21 +390,39 @@ fun MainContent(
             onChannelFavoriteListVisibleChange = {
                 settingsViewModel.iptvChannelFavoriteListVisible = it
             },
-            onClose = { mainContentState.isChannelScreenVisible = false },
+            // 多线路相关参数
+            showChannelUrlListProvider = { mainContentState.isMainChannelUrlScreenVisible },
+            onChannelUrlSelected = { url ->
+                mainContentState.isChannelScreenVisible = false
+                mainContentState.isMainChannelUrlScreenVisible = false
+                mainContentState.changeCurrentChannel(
+                    mainContentState.currentChannel,
+                    mainContentState.currentChannel.urlList.indexOf(url),
+                )
+            },
+            onClose = {
+                mainContentState.isChannelScreenVisible = false
+                mainContentState.isMainChannelUrlScreenVisible = false
+            },
         )
     }
 
     PopupContent(
         visibleProvider = { mainContentState.isChannelScreenVisible && settingsViewModel.uiUseClassicPanelScreen },
-        onDismissRequest = { mainContentState.isChannelScreenVisible = false },
+        onDismissRequest = {
+            mainContentState.isChannelScreenVisible = false
+            mainContentState.isMainChannelUrlScreenVisible = false
+        },
     ) {
         ClassicChannelScreen(
             onShowMoreSettings = {
                 mainContentState.isChannelScreenVisible = false
+                mainContentState.isMainChannelUrlScreenVisible = false
                 mainContentState.isSettingsScreenVisible = true
             },
             onNavigateToSettingsCategory = { category ->
                 mainContentState.isChannelScreenVisible = false
+                mainContentState.isMainChannelUrlScreenVisible = false
                 mainContentState.isSettingsScreenVisible = true
                 mainViewModel.setCurrentSettingsCategory(category)
             },
@@ -412,6 +437,7 @@ fun MainContent(
             showChannelLogoProvider = { settingsViewModel.uiShowChannelLogo },
             onChannelSelected = {
                 mainContentState.isChannelScreenVisible = false
+                mainContentState.isMainChannelUrlScreenVisible = false
                 mainContentState.changeCurrentChannel(it)
             },
             onChannelFavoriteToggle = { mainContentState.favoriteChannelOrNot(it) },
@@ -424,6 +450,7 @@ fun MainContent(
             currentPlaybackEpgProgrammeProvider = { mainContentState.currentPlaybackEpgProgramme },
             onEpgProgrammePlayback = { channel, programme ->
                 mainContentState.isChannelScreenVisible = false
+                mainContentState.isMainChannelUrlScreenVisible = false
                 mainContentState.changeCurrentChannel(channel, null, programme)
             },
             onEpgProgrammeReserve = { channel, programme ->
@@ -435,7 +462,20 @@ fun MainContent(
             onChannelFavoriteListVisibleChange = {
                 settingsViewModel.iptvChannelFavoriteListVisible = it
             },
-            onClose = { mainContentState.isChannelScreenVisible = false },
+            // 多线路相关参数
+            showChannelUrlListProvider = { mainContentState.isMainChannelUrlScreenVisible },
+            onChannelUrlSelected = { url ->
+                mainContentState.isChannelScreenVisible = false
+                mainContentState.isMainChannelUrlScreenVisible = false
+                mainContentState.changeCurrentChannel(
+                    mainContentState.currentChannel,
+                    mainContentState.currentChannel.urlList.indexOf(url),
+                )
+            },
+            onClose = {
+                mainContentState.isChannelScreenVisible = false
+                mainContentState.isMainChannelUrlScreenVisible = false
+            },
         )
     }
 

@@ -107,6 +107,14 @@ class MainContentState(
             _isVideoPlayerDisplayModeScreenVisible = value
         }
 
+    // 新增：主界面多线路显示状态
+    private var _isMainChannelUrlScreenVisible by mutableStateOf(false)
+    var isMainChannelUrlScreenVisible
+        get() = _isMainChannelUrlScreenVisible
+        set(value) {
+            _isMainChannelUrlScreenVisible = value
+        }
+
     init {
         Log.d(TAG, "初始化MainContentState, 视频播放器状态: ${if(videoPlayerState != null) "已初始化" else "未初始化"}")
         

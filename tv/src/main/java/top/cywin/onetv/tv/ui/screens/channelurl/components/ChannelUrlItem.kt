@@ -13,9 +13,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.ListItem
+import androidx.tv.material3.ListItemDefaults
+import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.RadioButton
 import androidx.tv.material3.Text
 import kotlinx.coroutines.Dispatchers
@@ -52,6 +55,11 @@ fun ChannelUrlItem(
             .handleKeyEvents(onSelect = onSelected),
         selected = false,
         onClick = {},
+        colors = ListItemDefaults.colors(
+            containerColor = Color.Transparent,
+            focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f), // 比列表背景(0.5f)更深的透明度
+            selectedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f), // 比列表背景(0.5f)更深的透明度
+        ),
         headlineContent = {
             Row(
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -69,7 +77,7 @@ fun ChannelUrlItem(
                 }
             }
         },
-        supportingContent = { Text(url, maxLines = 1) },
+        supportingContent = null, // 隐藏URL显示
         trailingContent = {
             RadioButton(selected = isSelected, onClick = {})
         },
