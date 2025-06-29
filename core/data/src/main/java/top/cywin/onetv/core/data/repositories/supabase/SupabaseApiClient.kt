@@ -4,6 +4,7 @@ package top.cywin.onetv.core.data.repositories.supabase
 import android.util.Log
 import io.github.jan.supabase.functions.functions
 import io.github.jan.supabase.storage.storage
+import io.github.jan.supabase.auth.auth
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -32,7 +33,30 @@ class SupabaseApiClient {
     private val client = SupabaseClient.client
     private val functions = client.functions
     private val storage = client.storage
+    private val auth = client.auth
     private val log = Logger.create("SupabaseApiClient")
+    
+    // 添加会话令牌字段
+    private var sessionToken: String? = null
+    
+    /**
+     * 设置会话令牌
+     * @param token 会话令牌
+     */
+    suspend fun setSessionToken(token: String) {
+        log.d("设置会话令牌: ${token.take(10)}...")
+        this.sessionToken = token
+
+        // 更新Supabase客户端的会话状态
+        try {
+            // 使用提供的token恢复会话
+            auth.retrieveUser(token)
+            log.d("成功更新Supabase客户端会话状态")
+        } catch (e: Exception) {
+            log.w("更新Supabase客户端会话状态失败: ${e.message}")
+            // 即使失败也继续，因为我们仍然可以手动使用token
+        }
+    }
     
     /**
      * 获取IPTV频道列表
@@ -556,12 +580,32 @@ class SupabaseApiClient {
                 put("duration", duration)
             }
             
+            // 获取最新的会话令牌
+            val currentSession = try {
+                auth.currentSessionOrNull()
+            } catch (e: Exception) {
+                log.e("获取会话令牌失败", e)
+                null
+            }
+            val accessToken = currentSession?.accessToken
+
+            // 确保使用用户JWT令牌而不是anon key
+            val userToken = sessionToken ?: accessToken
+            if (userToken == null) {
+                log.e("记录观看历史失败: 无有效用户令牌")
+                return@withContext buildJsonObject {
+                    put("success", false)
+                    put("error", "无有效用户令牌")
+                }
+            }
+
+            log.d("使用用户JWT令牌: ${userToken.take(10)}...")
+
+            // 不手动设置Authorization头，让Supabase SDK自动处理
+            // 确保当前会话是活跃的，SDK会自动使用正确的用户JWT令牌
             val response = functions.invoke(
                 function = "watch_history",
-                body = requestData,
-                headers = io.ktor.http.Headers.build {
-                    append("Content-Type", "application/json")
-                }
+                body = requestData
             )
             
             val responseText = response.bodyAsText()
@@ -636,9 +680,7 @@ class SupabaseApiClient {
     }
 
     /**
-     * 使用upsert方式批量记录观看历史（推荐）
-     * @param records 观看记录列表，每条记录包含channelName, channelUrl, duration, watchStart, watchEnd
-     * @return 记录结果
+     * 批量upsert同步观看历史到服务器
      */
     suspend fun batchUpsertWatchHistory(
         records: List<Map<String, Any?>>
@@ -660,7 +702,7 @@ class SupabaseApiClient {
                     buildJsonObject {
                         put("channelName", record["channelName"]?.toString() ?: "")
                         put("channelUrl", record["channelUrl"]?.toString() ?: "")
-                        put("duration", record["duration"]?.toString()?.toIntOrNull() ?: 0)
+                        put("duration", record["duration"]?.toString()?.toLongOrNull() ?: 0L)
                         put("watchStart", record["watchStart"]?.toString() ?: "")
                         put("watchEnd", record["watchEnd"]?.toString() ?: "")
                     }
@@ -673,6 +715,29 @@ class SupabaseApiClient {
 
             log.d("准备发送批量upsert观看历史请求: URL=watch_history_upsert, 内容大小=${jsonRecords.toString().length}字节")
 
+            // 获取最新的会话令牌
+            val currentSession = try {
+                auth.currentSessionOrNull()
+            } catch (e: Exception) {
+                log.e("获取会话令牌失败", e)
+                null
+            }
+            val accessToken = currentSession?.accessToken
+
+            // 确保使用用户JWT令牌而不是anon key
+            val userToken = sessionToken ?: accessToken
+            if (userToken == null) {
+                log.e("批量upsert观看历史失败: 无有效用户令牌")
+                return@withContext buildJsonObject {
+                    put("success", false)
+                    put("error", "无有效用户令牌")
+                }
+            }
+
+            log.d("使用用户JWT令牌: ${userToken.take(10)}...")
+
+            // 不手动设置Authorization头，让Supabase SDK自动处理
+            // 确保当前会话是活跃的，SDK会自动使用正确的用户JWT令牌
             val response = functions.invoke(
                 function = "watch_history_upsert",
                 body = requestData
@@ -736,8 +801,8 @@ class SupabaseApiClient {
                             when (it) {
                                 is Long -> put("duration", it)
                                 is Int -> put("duration", it.toLong())
-                                is String -> put("duration", it.toLongOrNull() ?: 0)
-                                else -> put("duration", 0)
+                                is String -> put("duration", it.toLongOrNull() ?: 0L)
+                                else -> put("duration", 0L)
                             }
                         }
                         record["watchStart"]?.let { put("watchStart", it.toString()) }

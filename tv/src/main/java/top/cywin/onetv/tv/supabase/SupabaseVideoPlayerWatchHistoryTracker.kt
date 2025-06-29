@@ -115,11 +115,11 @@ class SupabaseVideoPlayerWatchHistoryTracker(
                     coroutineScope.launch(Dispatchers.IO) {
                         try {
                             // 使用本地管理器记录观看历史
-                            SupabaseWatchHistorySessionManager.recordChannelWatch(
+                            SupabaseWatchHistorySessionManager.addWatchHistory(
+                                context = context,
                                 channelName = previousChannel.name,
                                 channelUrl = previousChannel.urlList.firstOrNull() ?: "",
-                                duration = finalDuration,
-                                context = context
+                                duration = finalDuration
                             )
 
                             Log.d(TAG, "[WatchTracker] 切换频道时成功保存观看历史: ${previousChannel.name}, 时长: $finalDuration 秒")
@@ -198,37 +198,30 @@ class SupabaseVideoPlayerWatchHistoryTracker(
                 coroutineScope.launch(Dispatchers.IO) {
                     try {
                         // 使用本地管理器记录观看历史
-                        Log.d(TAG, "[WatchTracker] 调用SupabaseWatchHistorySessionManager.recordChannelWatch保存记录, 时长=${finalDuration}秒")
-                        
-                        SupabaseWatchHistorySessionManager.recordChannelWatch(
+                        val historyItem = SupabaseWatchHistorySessionManager.addWatchHistoryAsync(
+                            context = context,
                             channelName = channel.name,
                             channelUrl = channel.urlList.firstOrNull() ?: "",
-                            duration = finalDuration,
-                            context = context
+                            duration = finalDuration
                         )
                         
-                        Log.d(TAG, "[WatchTracker] 已成功保存观看历史到本地: ${channel.name}, 时长: $finalDuration 秒")
-                        
-                        // 不再立即同步到服务器，仅在应用退出时同步
-                        Log.d(TAG, "[WatchTracker] 记录已保存到本地，将在应用退出时同步到服务器")
+                        Log.d(TAG, "[WatchTracker] 成功保存观看历史: ${channel.name}, 时长: $finalDuration 秒, ID: ${historyItem.id}")
+                        Log.d(TAG, "[WatchTracker] 记录已保存到本地缓存，将在应用/账户退出时统一同步到服务器")
                     } catch (e: Exception) {
                         Log.e(TAG, "[WatchTracker] 保存观看历史失败: ${e.message}", e)
                     }
                 }
             }
         } else {
-            Log.d(TAG, "[WatchTracker] 停止跟踪时观看时长不足(${watchDuration}秒 < ${MIN_RECORD_DURATION}秒), 不记录: ${currentChannel?.name}")
+            Log.d(TAG, "[WatchTracker] 观看时长不足，跳过记录: ${currentChannel?.name}, 观看时长=${watchDuration}秒 < ${MIN_RECORD_DURATION}秒")
         }
         
+        // 重置跟踪状态
+        isTracking = false
         trackingJob?.cancel()
         trackingJob = null
-        isTracking = false
-        currentChannel = null
-        watchDuration = 0
-
-        Log.d(TAG, "[WatchTracker] 跟踪已完全停止, 资源已释放")
-        // 停止跟踪时只保存到本地，不同步到服务器
-        // 所有本地记录将在应用/账户退出时统一同步
+        
+        Log.d(TAG, "[WatchTracker] 已停止跟踪观看历史: ${currentChannel?.name}")
     }
     
     /**
@@ -274,13 +267,13 @@ class SupabaseVideoPlayerWatchHistoryTracker(
         coroutineScope.launch(Dispatchers.IO) {
             try {
                 // 使用本地管理器记录观看历史
-                Log.d(TAG, "[WatchTracker] 调用SupabaseWatchHistorySessionManager.recordChannelWatch保存记录, 时长=${finalDuration}秒")
+                Log.d(TAG, "[WatchTracker] 调用SupabaseWatchHistorySessionManager.addWatchHistory保存记录, 时长=${finalDuration}秒")
                 
-                SupabaseWatchHistorySessionManager.recordChannelWatch(
+                SupabaseWatchHistorySessionManager.addWatchHistory(
+                    context = context,
                     channelName = channel.name,
                     channelUrl = channel.urlList.firstOrNull() ?: "",
-                    duration = finalDuration, // 使用保存的时长值
-                    context = context
+                    duration = finalDuration // 使用保存的时长值
                 )
                 
                 Log.d(TAG, "[WatchTracker] 已成功保存观看历史到本地: ${channel.name}, 时长: $finalDuration 秒")
@@ -343,11 +336,11 @@ class SupabaseVideoPlayerWatchHistoryTracker(
                     try {
                         // 同步方式直接保存，确保不丢失
                         Log.d(TAG, "[WatchTracker] 应用退出时直接保存观看历史: ${channel.name}, 时长=${finalDuration}秒")
-                        SupabaseWatchHistorySessionManager.recordChannelWatch(
+                        SupabaseWatchHistorySessionManager.addWatchHistory(
+                            context = context,
                             channelName = channel.name,
                             channelUrl = channel.urlList.firstOrNull() ?: "",
-                            duration = finalDuration,
-                            context = context
+                            duration = finalDuration
                         )
                         Log.d(TAG, "应用已退出，保存观看记录成功，保存的记录是${channel.name}")
                     } catch (e: Exception) {

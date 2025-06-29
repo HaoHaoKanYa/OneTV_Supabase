@@ -76,8 +76,8 @@ fun SupabaseWatchHistory(
     context: Context
 ) {
     val scope = rememberCoroutineScope()
-    val watchHistoryItems = remember { mutableStateListOf<WatchHistoryItem>() }
-    val watchStatistics = remember { mutableStateOf<WatchStatistics?>(null) }
+    val watchHistoryItems = remember { mutableStateListOf<SupabaseWatchHistoryItem>() }
+    val watchStatistics = remember { mutableStateOf<SupabaseWatchStatistics?>(null) }
     
     var isHistoryLoading by remember { mutableStateOf(true) }
     var isLoadingMore by remember { mutableStateOf(false) }
@@ -198,38 +198,10 @@ fun SupabaseWatchHistory(
                             watchStatistics.value = syncedStats
                             
                             totalPages = syncedPagination.totalPages
-                            hasMoreData = currentPage < syncedPagination.totalPages
-                            
-                            Log.d("SupabaseWatchHistory", "已更新UI数据，同步后记录数: ${watchHistoryItems.size}")
-                        } else {
-                            // 如果当前筛选条件下没有数据，尝试加载全部数据
-                            Log.d("SupabaseWatchHistory", "当前筛选条件下无数据，尝试加载全部数据")
-                            val (allHistory, allStats, allPagination) = SupabaseWatchHistorySessionManager.getWatchHistory(
-                                timeRange = "全部",
-                                sortBy = sortOption,
-                                page = currentPage,
-                                pageSize = 50
-                            )
-                            
-                            if (allHistory.isNotEmpty()) {
-                                Log.d("SupabaseWatchHistory", "加载全部数据: ${allHistory.size}条记录")
-                                // 如果有数据，切换到"全部"筛选
-                                timeRangeFilter = "全部"
-                                
-                                watchHistoryItems.clear()
-                                watchHistoryItems.addAll(allHistory)
-                                watchStatistics.value = allStats
-                                
-                                totalPages = allPagination.totalPages
-                                hasMoreData = currentPage < allPagination.totalPages
-                                
-                                Log.d("SupabaseWatchHistory", "已更新UI数据，切换到全部后记录数: ${watchHistoryItems.size}")
-                            } else {
-                                Log.d("SupabaseWatchHistory", "同步后仍无数据")
-                            }
+                            hasMoreData = currentPage < totalPages
                         }
                     } else {
-                        Log.d("SupabaseWatchHistory", "服务器同步失败")
+                        Log.e("SupabaseWatchHistory", "从服务器同步数据失败")
                     }
                 }
             } catch (e: Exception) {
@@ -237,67 +209,10 @@ fun SupabaseWatchHistory(
                 errorMessage = "加载观看历史失败: ${e.message}"
             } finally {
                 isHistoryLoading = false
-                Log.d("SupabaseWatchHistory", "===== 加载观看历史完成 =====")
-            }
-        } else {
-            isHistoryLoading = false
-            Log.d("SupabaseWatchHistory", "跳过加载: 用户数据为空或正在加载中")
-        }
-    }
-    
-    // 加载更多数据函数
-    fun loadMoreData() {
-        if (isLoadingMore || !hasMoreData) return
-        
-        scope.launch {
-            try {
-                isLoadingMore = true
-                val nextPage = currentPage + 1
-                
-                val (moreHistory, _, pagination) = SupabaseWatchHistorySessionManager.getWatchHistory(
-                    timeRange = timeRangeFilter,
-                    sortBy = sortOption,
-                    page = nextPage
-                )
-                
-                watchHistoryItems.addAll(moreHistory)
-                currentPage = nextPage
-                hasMoreData = currentPage < pagination.totalPages
-            } catch (e: Exception) {
-                Log.e("SupabaseWatchHistory", "加载更多观看历史失败", e)
-                // 不显示错误，只在日志中记录
-            } finally {
-                isLoadingMore = false
             }
         }
     }
     
-    // 检测列表滚动到底部时加载更多
-    val listState = rememberLazyListState()
-    
-    LaunchedEffect(listState) {
-        snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
-            .collect { lastVisibleIndex ->
-                if (lastVisibleIndex != null && hasMoreData && !isLoadingMore) {
-                    val totalItemsCount = watchHistoryItems.size
-                    // 当滚动到最后5个项目时，加载更多
-                    if (lastVisibleIndex >= totalItemsCount - 5) {
-                        loadMoreData()
-                    }
-                }
-            }
-    }
-    
-    // 注意：根据项目设定，只有在用户退出或应用退出时才上传数据到服务器
-    // 移除组件销毁时的自动上传逻辑，避免频繁上传
-    // DisposableEffect(Unit) {
-    //     onDispose {
-    //         scope.launch {
-    //             SupabaseWatchHistorySyncService.syncToServer(context)
-    //         }
-    //     }
-    // }
-
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -480,6 +395,7 @@ fun SupabaseWatchHistory(
                             )
                         }
                     } else {
+                        val listState = rememberLazyListState()
                         LazyColumn(
                             state = listState,
                             modifier = Modifier
@@ -519,60 +435,6 @@ fun SupabaseWatchHistory(
                     }
                 }
             }
-        }
-    }
-}
-
-/**
- * 观看历史项视图
- */
-@Composable
-fun WatchHistoryItemView(item: WatchHistoryItem) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 8.dp)
-            .background(
-                color = Color(0xFF2C3E50).copy(alpha = 0.2f),
-                shape = RoundedCornerShape(4.dp)
-            )
-            .padding(12.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(
-                text = item.channelName,
-                fontWeight = FontWeight.Bold,
-                color = Color.White,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
-            )
-            
-            Spacer(modifier = Modifier.width(8.dp))
-            
-            Text(
-                text = formatDuration(item.duration),
-                color = Color(0xFFFFD700)
-            )
-        }
-        
-        Spacer(modifier = Modifier.height(4.dp))
-        
-        Text(
-            text = "开始时间: ${item.watchStart}",
-            fontSize = 14.sp,
-            color = Color.LightGray
-        )
-        
-        if (item.watchEnd != null) {
-            Text(
-                text = "结束时间: ${item.watchEnd}",
-                fontSize = 14.sp,
-                color = Color.LightGray
-            )
         }
     }
 }
@@ -623,7 +485,7 @@ suspend fun loadWatchHistoryPaged(
     sortBy: String,
     page: Int = 1,
     pageSize: Int = 20
-): Triple<List<WatchHistoryItem>, WatchStatistics, PaginationData> = withContext(Dispatchers.IO) {
+): Triple<List<SupabaseWatchHistoryItem>, SupabaseWatchStatistics, SupabaseWatchHistoryPagination> = withContext(Dispatchers.IO) {
     // 转换时间范围参数
     val timeRangeParam = when (timeRange) {
         "今天" -> "today"
@@ -685,26 +547,24 @@ suspend fun loadWatchHistoryPaged(
             
             Log.d("SupabaseWatchHistory", "解析到 ${channelStats.size} 条频道统计数据")
             
-            WatchStatistics(
+            SupabaseWatchStatistics(
                 totalWatchTime = statsObject?.get("totalWatchTime")?.jsonPrimitive?.content?.toLongOrNull() ?: 0,
                 totalChannels = statsObject?.get("totalChannels")?.jsonPrimitive?.content?.toIntOrNull() ?: 0,
-                totalWatches = statsObject?.get("totalWatches")?.jsonPrimitive?.content?.toIntOrNull() ?: 0,
-                mostWatchedChannel = statsObject?.get("mostWatchedChannel")?.jsonPrimitive?.content,
-                channelStatistics = channelStats
+                mostWatchedChannel = statsObject?.get("mostWatchedChannel")?.jsonPrimitive?.content ?: "",
+                mostWatchedTime = statsObject?.get("mostWatchedTime")?.jsonPrimitive?.content?.toLongOrNull() ?: 0
             )
         } catch (e: Exception) {
             Log.e("SupabaseWatchHistory", "解析统计数据失败", e)
             // 返回默认统计数据
-            WatchStatistics(
+            SupabaseWatchStatistics(
                 totalWatchTime = 0,
                 totalChannels = 0,
-                totalWatches = 0,
-                mostWatchedChannel = null,
-                channelStatistics = emptyList()
+                mostWatchedChannel = "",
+                mostWatchedTime = 0
             )
         }
         
-        Log.d("SupabaseWatchHistory", "解析后的统计数据: 总时长=${statistics.totalWatchTime}, 频道数=${statistics.totalChannels}, 观看次数=${statistics.totalWatches}")
+        Log.d("SupabaseWatchHistory", "解析后的统计数据: 总时长=${statistics.totalWatchTime}, 频道数=${statistics.totalChannels}")
         
         // 2. 获取观看历史列表
         try {
@@ -720,7 +580,7 @@ suspend fun loadWatchHistoryPaged(
             
             val historyItems = try {
                 val itemsArray = historyResponse.jsonObject["items"]?.jsonArray
-                val items = mutableListOf<WatchHistoryItem>()
+                val items = mutableListOf<SupabaseWatchHistoryItem>()
                 
                 Log.d("SupabaseWatchHistory", "API返回记录数: ${itemsArray?.size ?: 0}")
                 
@@ -728,12 +588,14 @@ suspend fun loadWatchHistoryPaged(
                     try {
                         val item = jsonElement.jsonObject
                         
-                        val historyItem = WatchHistoryItem(
+                        val historyItem = SupabaseWatchHistoryItem(
                             id = item["id"]?.jsonPrimitive?.content ?: "",
                             channelName = item["channel_name"]?.jsonPrimitive?.content ?: "",
                             channelUrl = item["channel_url"]?.jsonPrimitive?.content ?: "",
                             watchStart = formatDateTime(item["watch_start"]?.jsonPrimitive?.content ?: ""),
-                            watchEnd = item["watch_end"]?.jsonPrimitive?.content?.let { formatDateTime(it) },
+                            watchEnd = item["watch_end"]?.jsonPrimitive?.content?.let { 
+                                if (it.isNotBlank()) formatDateTime(it) else null 
+                            },
                             duration = item["duration"]?.jsonPrimitive?.content?.toLongOrNull() ?: 0
                         )
                         
@@ -750,38 +612,39 @@ suspend fun loadWatchHistoryPaged(
             } catch (e: Exception) {
                 Log.e("SupabaseWatchHistory", "解析历史数据失败", e)
                 // 返回空列表
-                emptyList<WatchHistoryItem>()
+                emptyList<SupabaseWatchHistoryItem>()
             }
             
+            // 创建分页数据对象
             val pagination = try {
                 val paginationObject = historyResponse.jsonObject["pagination"]?.jsonObject
                 
-                PaginationData(
-                    page = paginationObject?.get("page")?.jsonPrimitive?.content?.toIntOrNull() ?: page,
+                SupabaseWatchHistoryPagination(
+                    currentPage = paginationObject?.get("page")?.jsonPrimitive?.content?.toIntOrNull() ?: page,
                     pageSize = paginationObject?.get("pageSize")?.jsonPrimitive?.content?.toIntOrNull() ?: pageSize,
-                    totalItems = paginationObject?.get("totalItems")?.jsonPrimitive?.content?.toIntOrNull() ?: historyItems.size,
+                    totalItems = paginationObject?.get("totalItems")?.jsonPrimitive?.content?.toIntOrNull() ?: 0,
                     totalPages = paginationObject?.get("totalPages")?.jsonPrimitive?.content?.toIntOrNull() ?: 1
                 )
             } catch (e: Exception) {
                 Log.e("SupabaseWatchHistory", "解析分页数据失败", e)
                 // 返回默认分页数据
-                PaginationData(
-                    page = page,
+                SupabaseWatchHistoryPagination(
+                    currentPage = page,
                     pageSize = pageSize,
-                    totalItems = historyItems.size,
-                    totalPages = if (historyItems.isEmpty()) 0 else 1
+                    totalItems = 0,
+                    totalPages = 0
                 )
             }
             
-            Log.d("SupabaseWatchHistory", "最终返回: ${historyItems.size}条记录, 总页数=${pagination.totalPages}")
-            return@withContext Triple(historyItems, statistics, pagination)
+            // 返回结果三元组
+            Triple(historyItems, statistics, pagination)
         } catch (e: Exception) {
             Log.e("SupabaseWatchHistory", "获取历史列表失败", e)
             // 返回空数据但不抛出异常
             return@withContext Triple(
                 emptyList(),
                 statistics,
-                PaginationData(page = page, pageSize = pageSize, totalItems = 0, totalPages = 0)
+                SupabaseWatchHistoryPagination(currentPage = page, pageSize = pageSize, totalItems = 0, totalPages = 0)
             )
         }
     } catch (e: Exception) {
@@ -789,32 +652,25 @@ suspend fun loadWatchHistoryPaged(
         // 返回完全空的数据
         return@withContext Triple(
             emptyList(),
-            WatchStatistics(totalWatchTime = 0, totalChannels = 0, totalWatches = 0, mostWatchedChannel = null, channelStatistics = emptyList()),
-            PaginationData(page = page, pageSize = pageSize, totalItems = 0, totalPages = 0)
+            SupabaseWatchStatistics(totalWatchTime = 0, totalChannels = 0, mostWatchedChannel = "", mostWatchedTime = 0),
+            SupabaseWatchHistoryPagination(currentPage = page, pageSize = pageSize, totalItems = 0, totalPages = 0)
         )
     }
 }
 
 /**
- * 分页数据类
- */
-@Serializable
-data class PaginationData(
-    val page: Int,
-    val pageSize: Int,
-    val totalItems: Int,
-    val totalPages: Int
-)
-
-/**
  * 格式化日期时间
  */
 fun formatDateTime(isoDateTime: String): String {
+    if (isoDateTime.isBlank()) return ""
+    
     try {
         val inputFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault())
         val outputFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
         
-        val date = inputFormat.parse(isoDateTime.substring(0, 19))
+        // 确保字符串长度足够
+        val safeDateTime = if (isoDateTime.length >= 19) isoDateTime.substring(0, 19) else isoDateTime
+        val date = inputFormat.parse(safeDateTime)
         return outputFormat.format(date ?: Date())
     } catch (e: Exception) {
         return isoDateTime
@@ -822,23 +678,64 @@ fun formatDateTime(isoDateTime: String): String {
 }
 
 /**
- * 观看历史项数据类
+ * 观看历史项视图
  */
-@Serializable
-data class WatchHistoryItem(
-    val id: String,
-    val channelName: String,
-    val channelUrl: String,
-    val watchStart: String,
-    val watchEnd: String?,
-    val duration: Long
-)
+@Composable
+fun WatchHistoryItemView(item: SupabaseWatchHistoryItem) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp)
+            .background(
+                color = Color(0xFF2C3E50).copy(alpha = 0.2f),
+                shape = RoundedCornerShape(4.dp)
+            )
+            .padding(12.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = item.channelName,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            
+            Spacer(modifier = Modifier.width(8.dp))
+            
+            Text(
+                text = formatDuration(item.duration),
+                color = Color(0xFFFFD700)
+            )
+        }
+        
+        Spacer(modifier = Modifier.height(4.dp))
+        
+        Text(
+            text = "开始时间: ${item.watchStart}",
+            fontSize = 14.sp,
+            color = Color.LightGray
+        )
+        
+        if (item.watchEnd != null) {
+            Text(
+                text = "结束时间: ${item.watchEnd}",
+                fontSize = 14.sp,
+                color = Color.LightGray
+            )
+        }
+    }
+}
 
 /**
  * 观看历史统计表格组件
  */
 @Composable
-fun WatchHistoryStatsTable(stats: WatchStatistics) {
+fun WatchHistoryStatsTable(stats: SupabaseWatchStatistics) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -974,27 +871,7 @@ fun WatchHistoryStatsTable(stats: WatchStatistics) {
     }
 }
 
-/**
- * 观看统计数据类
- */
-@Serializable
-data class WatchStatistics(
-    val totalWatchTime: Long,
-    val totalChannels: Int,
-    val totalWatches: Int,
-    val mostWatchedChannel: String?,
-    val channelStatistics: List<ChannelStatistic>? = null
-)
-
-/**
- * 频道统计数据类
- */
-@Serializable
-data class ChannelStatistic(
-    val channelName: String,
-    val watchCount: Int,
-    val totalDuration: Long
-)
+// 频道统计数据类已在SupabaseWatchHistoryItem.kt中定义
 
 /**
  * 记录观看历史
@@ -1016,11 +893,11 @@ suspend fun recordChannelWatch(
         Log.d("SupabaseWatchHistory", "记录观看历史: $channelName, 时长: $duration 秒")
         
         // 使用本地会话管理器记录观看历史
-        SupabaseWatchHistorySessionManager.recordChannelWatch(
+        SupabaseWatchHistorySessionManager.addWatchHistory(
+            context = context,
             channelName = channelName,
             channelUrl = channelUrl,
-            duration = duration,
-            context = context
+            duration = duration
         )
         
         return@withContext true
@@ -1058,11 +935,11 @@ suspend fun createTestWatchHistory(context: Context): Boolean = withContext(Disp
             try {
                 Log.d("SupabaseWatchHistory", "创建测试记录: ${channel.first}, 时长=$duration 秒")
                 // 使用本地会话管理器记录测试数据
-                SupabaseWatchHistorySessionManager.recordChannelWatch(
+                SupabaseWatchHistorySessionManager.addWatchHistory(
+                    context = context,
                     channelName = channel.first,
                     channelUrl = channel.second,
-                    duration = duration,
-                    context = context
+                    duration = duration
                 )
             } catch (e: Exception) {
                 Log.e("SupabaseWatchHistory", "创建测试记录失败: ${channel.first}", e)
@@ -1198,7 +1075,7 @@ fun SyncWatchHistoryButton(
                     
                     try {
                         Log.d("SupabaseWatchHistory", "开始清空本地观看历史")
-                        SupabaseWatchHistorySyncService.clearLocalHistory(context)
+                        SupabaseWatchHistorySessionManager.clearHistory(context)
                         resultMessage = "已清空本地观看历史"
                         Log.d("SupabaseWatchHistory", "已清空本地观看历史")
                         

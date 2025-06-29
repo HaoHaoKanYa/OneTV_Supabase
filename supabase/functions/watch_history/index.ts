@@ -6,6 +6,62 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
+/**
+ * 统一的观看历史记录数据模型
+ */
+interface WatchHistoryItem {
+  id?: string;
+  channelName: string;
+  channelUrl: string;
+  duration: number;
+  watchStart: string;
+  watchEnd: string;
+  userId?: string;
+}
+
+/**
+ * 数据库表字段映射
+ */
+const DB_FIELD_MAP = {
+  id: 'id',
+  channelName: 'channel_name',
+  channelUrl: 'channel_url',
+  duration: 'duration',
+  watchStart: 'watch_start',
+  watchEnd: 'watch_end',
+  userId: 'user_id'
+};
+
+/**
+ * 将数据库记录转换为统一的WatchHistoryItem格式
+ */
+function dbRecordToWatchHistoryItem(record: any): WatchHistoryItem {
+  return {
+    id: record.id,
+    channelName: record.channel_name,
+    channelUrl: record.channel_url,
+    duration: record.duration,
+    watchStart: record.watch_start,
+    watchEnd: record.watch_end,
+    userId: record.user_id
+  };
+}
+
+/**
+ * 将统一的WatchHistoryItem转换为数据库记录格式
+ */
+function watchHistoryItemToDbRecord(item: WatchHistoryItem, userId: string): any {
+  return {
+    id: item.id,
+    channel_name: item.channelName,
+    channel_url: item.channelUrl,
+    duration: item.duration,
+    watch_start: item.watchStart,
+    watch_end: item.watchEnd,
+    user_id: userId
+  };
+}
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -39,8 +95,11 @@ serve(async (req) => {
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
-    
-    const token = authHeader.replace('Bearer ', '')
+
+    // 提取JWT令牌（简化处理，与其他Edge Function保持一致）
+    const token = authHeader.substring(7)
+    console.log(`使用JWT令牌: ${token.substring(0, 20)}...`)
+
     const { data: { user }, error: userError } = await supabaseClient.auth.getUser(token)
     
     if (userError || !user) {
@@ -85,7 +144,7 @@ serve(async (req) => {
             )
           }
 
-          const records = body.records;
+          const records = body.records as WatchHistoryItem[];
           const validRecords = [];
           const recordHashes = new Set(); // 用于检查本批次内的重复记录
 
@@ -115,6 +174,7 @@ serve(async (req) => {
             const watchStartTime = watchStart || new Date(new Date().getTime() - duration * 1000).toISOString();
             const watchEndTime = watchEnd || new Date().toISOString();
 
+            // 转换为数据库记录格式
             validRecords.push({
               user_id: userId,
               channel_name: channelName,
@@ -198,7 +258,8 @@ serve(async (req) => {
           )
         } else {
           // 处理单条记录
-          const { channelName, channelUrl, duration } = body
+          const item = body as WatchHistoryItem;
+          const { channelName, channelUrl, duration } = item;
 
           console.log(`记录观看历史: ${channelName}, 时长: ${duration}秒`);
 
@@ -359,8 +420,11 @@ serve(async (req) => {
             
             console.log(`成功获取观看历史列表: ${historyItems?.length || 0}条记录, 共${totalItems}条`);
             
+            // 将数据库记录转换为统一的WatchHistoryItem格式
+            const items = historyItems ? historyItems.map(dbRecordToWatchHistoryItem) : [];
+            
             response = {
-              items: historyItems || [],
+              items: items,
               pagination: {
                 page,
                 pageSize,
@@ -598,4 +662,26 @@ async function getWatchStatistics(supabase, userId, timeRange, startDate, endDat
       error: error.message || "未知错误"
     };
   }
+}
+
+/**
+ * 处理请求体，统一不同格式的输入
+ * @param body 请求体
+ * @returns 标准化的观看历史记录数组
+ */
+function processRequestBody(body: any): any[] {
+  // 如果是单条记录
+  if (body.channelName && body.channelUrl) {
+    return [body];
+  }
+  
+  // 如果是批量记录
+  if (body.records) {
+    const { records } = body;
+    // 确保records始终是数组
+    return Array.isArray(records) ? records : 
+           (typeof records === 'string' ? JSON.parse(records) : []);
+  }
+  
+  return [];
 } 

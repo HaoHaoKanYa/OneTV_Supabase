@@ -4,6 +4,9 @@ import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import top.cywin.onetv.core.data.repositories.supabase.cache.SupabaseCacheKey
 import top.cywin.onetv.core.data.repositories.supabase.cache.SupabaseCacheManager as CoreCacheManager
 
@@ -14,6 +17,88 @@ import top.cywin.onetv.core.data.repositories.supabase.cache.SupabaseCacheManage
  */
 object SupabaseCacheManager {
     private const val TAG = "SupabaseCacheManager"
+    
+    // JSON序列化工具
+    private val json = Json { 
+        ignoreUnknownKeys = true 
+        encodeDefaults = true
+        isLenient = true
+        prettyPrint = false
+    }
+    
+    /**
+     * 专门用于保存观看历史的方法
+     * 统一使用List<SupabaseWatchHistoryItem>类型存储
+     */
+    suspend fun saveWatchHistory(context: Context, items: List<SupabaseWatchHistoryItem>) = withContext(Dispatchers.IO) {
+        try {
+            Log.d(TAG, "保存观看历史到本地存储，条数: ${items.size}")
+            
+            // 使用kotlinx.serialization序列化为JSON字符串
+            val jsonString = json.encodeToString(items)
+            
+            // 保存JSON字符串到缓存
+            CoreCacheManager.saveCache(context, SupabaseCacheKey.WATCH_HISTORY, jsonString)
+            
+            // 记录最后更新时间
+            CoreCacheManager.saveCache(context, SupabaseCacheKey.WATCH_HISTORY_LAST_LOADED, System.currentTimeMillis())
+            
+            Log.d(TAG, "观看历史保存成功")
+        } catch (e: Exception) {
+            Log.e(TAG, "保存观看历史失败", e)
+        }
+    }
+
+    /**
+     * 专门用于获取观看历史的方法
+     * 统一返回List<SupabaseWatchHistoryItem>类型
+     */
+    suspend fun getWatchHistory(context: Context): List<SupabaseWatchHistoryItem> = withContext(Dispatchers.IO) {
+        try {
+            Log.d(TAG, "从本地存储获取观看历史数据")
+            
+            // 获取JSON字符串
+            val jsonString = CoreCacheManager.getCache<String>(context, SupabaseCacheKey.WATCH_HISTORY)
+            
+            if (jsonString == null) {
+                Log.d(TAG, "观看历史缓存不存在，返回空列表")
+                return@withContext emptyList<SupabaseWatchHistoryItem>()
+            }
+            
+            // 使用kotlinx.serialization解析JSON字符串
+            val items = try {
+                json.decodeFromString<List<SupabaseWatchHistoryItem>>(jsonString)
+            } catch (e: Exception) {
+                Log.e(TAG, "解析观看历史JSON失败，尝试修复", e)
+                
+                // 尝试修复可能存在的格式问题
+                try {
+                    // 检查是否是双重序列化的问题
+                    if (jsonString.startsWith("\"[") && jsonString.endsWith("]\"")) {
+                        // 去掉外层引号
+                        val fixedJson = jsonString.substring(1, jsonString.length - 1)
+                            .replace("\\\"", "\"")
+                            .replace("\\\\", "\\")
+                        
+                        Log.d(TAG, "尝试修复双重序列化问题")
+                        json.decodeFromString<List<SupabaseWatchHistoryItem>>(fixedJson)
+                    } else {
+                        // 其他情况，返回空列表
+                        emptyList()
+                    }
+                } catch (e2: Exception) {
+                    Log.e(TAG, "修复观看历史JSON失败，返回空列表", e2)
+                    emptyList()
+                }
+            }
+            
+            Log.d(TAG, "成功获取观看历史，条数: ${items.size}")
+            return@withContext items
+        } catch (e: Exception) {
+            Log.e(TAG, "获取观看历史失败", e)
+            return@withContext emptyList<SupabaseWatchHistoryItem>()
+        }
+    }
     
     /**
      * 用户退出登录时清除所有相关缓存
@@ -147,59 +232,5 @@ object SupabaseCacheManager {
      */
     suspend fun getRawCache(context: Context, key: SupabaseCacheKey): Any? {
         return CoreCacheManager.getRawCache(context, key)
-    }
-    
-    /**
-     * 获取原始缓存数据的同步版本
-     * @param context 应用上下文
-     * @param key 缓存键
-     * @return 原始缓存对象，可能是任意类型
-     */
-    fun getRawCacheSync(context: Context, key: SupabaseCacheKey): Any? {
-        return kotlinx.coroutines.runBlocking {
-            getRawCache(context, key)
-        }
-    }
-    
-    /**
-     * 安全地将任何缓存对象转换为通用类型
-     * 处理LinkedTreeMap到指定类型的转换问题
-     * 
-     * @param data 任何类型的数据对象
-     * @param targetClass 目标类型的Class对象
-     * @param defaultValue 默认值，如果转换失败则返回此值
-     * @return 转换后的对象，如果转换失败则返回defaultValue
-     */
-    fun <T : Any> safeConvertToType(data: Any?, targetClass: Class<T>, defaultValue: T? = null): T? {
-        if (data == null) return defaultValue
-        
-        return try {
-            when {
-                targetClass.isInstance(data) -> {
-                    Log.d(TAG, "数据已经是${targetClass.simpleName}类型，无需转换")
-                    targetClass.cast(data)
-                }
-                data is Map<*, *> -> {
-                    Log.d(TAG, "检测到Map类型（可能是LinkedTreeMap），转换为${targetClass.simpleName}")
-                    val gson = com.google.gson.Gson()
-                    val json = gson.toJson(data)
-                    gson.fromJson(json, targetClass)
-                }
-                else -> {
-                    Log.w(TAG, "未知数据类型: ${data.javaClass.name}，尝试强制转换为${targetClass.simpleName}")
-                    try {
-                        val gson = com.google.gson.Gson()
-                        val json = gson.toJson(data)
-                        gson.fromJson(json, targetClass)
-                    } catch (e: Exception) {
-                        Log.e(TAG, "转换为${targetClass.simpleName}失败: ${e.message}", e)
-                        defaultValue
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "转换数据到${targetClass.simpleName}时出错: ${e.message}", e)
-            defaultValue
-        }
     }
 } 

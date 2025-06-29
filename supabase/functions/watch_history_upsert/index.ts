@@ -6,6 +6,16 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
+interface WatchHistoryItem {
+  id?: string;
+  channelName: string;
+  channelUrl: string;
+  duration: number;
+  watchStart: string;
+  watchEnd: string;
+  userId?: string;
+}
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -33,8 +43,11 @@ serve(async (req) => {
       )
     }
 
+    // Extract JWT token (simplified handling, consistent with other Edge Functions)
+    const token = authHeader.substring(7)
+    console.log(`Using JWT token: ${token.substring(0, 20)}...`)
+
     // Verify the JWT token and get user
-    const token = authHeader.replace('Bearer ', '')
     const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token)
     
     if (authError || !user) {
@@ -47,16 +60,27 @@ serve(async (req) => {
 
     const userId = user.id
 
-    // Parse request body
-    const body = await req.json()
-    const { records } = body
+    // Parse request body safely
+    let body;
+    try {
+      body = await req.json();
+    } catch (e) {
+      console.error('Failed to parse request body:', e);
+      return new Response(
+        JSON.stringify({ success: false, error: 'Invalid JSON in request body' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
-    console.log(`Batch upsert watch history: user=${userId}, records=${records?.length || 0}`)
+    // Process the request body to handle different formats
+    const records = processRequestBody(body);
+    
+    console.log(`Batch upsert watch history: user=${userId}, records=${records.length}`)
 
     // Validate records array
-    if (!records || !Array.isArray(records) || records.length === 0) {
+    if (records.length === 0) {
       return new Response(
-        JSON.stringify({ success: false, error: 'Missing or invalid records array' }),
+        JSON.stringify({ success: false, error: 'No valid records found in request' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
@@ -146,3 +170,25 @@ serve(async (req) => {
     )
   }
 })
+
+/**
+ * 处理请求体，统一不同格式的输入
+ * @param body 请求体
+ * @returns 标准化的观看历史记录数组
+ */
+function processRequestBody(body: any): WatchHistoryItem[] {
+  // 如果是单条记录
+  if (body.channelName && body.channelUrl) {
+    return [body as WatchHistoryItem];
+  }
+  
+  // 如果是批量记录
+  if (body.records) {
+    const { records } = body;
+    // 确保records始终是数组
+    return Array.isArray(records) ? records : 
+           (typeof records === 'string' ? JSON.parse(records) : []);
+  }
+  
+  return [];
+}

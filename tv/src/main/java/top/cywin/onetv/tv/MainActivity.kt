@@ -179,25 +179,39 @@ class MainActivity : ComponentActivity() {
             Log.d(TAG, "未找到观看历史跟踪器实例，无法保存当前观看记录")
         }
         
-        appScope.launch {
+        // 使用GlobalScope确保不受Activity生命周期影响
+        kotlinx.coroutines.GlobalScope.launch(Dispatchers.IO) {
             try {
                 Log.d(TAG, "正在同步观看历史到服务器...")
                 val startTime = System.currentTimeMillis()
-                val count = SupabaseAppExitSyncManager.performExitSync(applicationContext)
+
+                // 使用applicationContext确保Context不会因Activity销毁而失效
+                val appContext = applicationContext
+                val count = SupabaseAppExitSyncManager.performExitSync(appContext)
                 val endTime = System.currentTimeMillis()
                 Log.d(TAG, "成功同步 $count 条观看记录, 耗时 ${endTime - startTime}ms")
 
                 // 延迟一下，确保异步操作有机会完成
-                kotlinx.coroutines.delay(500)
+                kotlinx.coroutines.delay(1000) // 增加延迟时间
 
                 Log.d(TAG, "应用准备退出")
-                finish()
-                Log.d(TAG, "应用已调用finish, 即将完全退出")
+
+                // 在主线程执行UI操作
+                kotlinx.coroutines.withContext(Dispatchers.Main) {
+                    finish()
+                    Log.d(TAG, "应用已调用finish, 即将完全退出")
+                }
+
+                // 再次延迟确保finish()完成
+                kotlinx.coroutines.delay(500)
                 exitProcess(0)
             } catch (e: Exception) {
                 Log.e(TAG, "同步观看历史失败", e)
                 // 即使同步失败也要退出
-                finish()
+                kotlinx.coroutines.withContext(Dispatchers.Main) {
+                    finish()
+                }
+                kotlinx.coroutines.delay(500)
                 exitProcess(0)
             }
         }
@@ -230,11 +244,12 @@ class MainActivity : ComponentActivity() {
             tracker.onAppExit()
         }
 
-        // 异步同步到服务器
-        appScope.launch {
+        // 使用GlobalScope异步同步到服务器，避免Activity生命周期影响
+        kotlinx.coroutines.GlobalScope.launch(Dispatchers.IO) {
             try {
                 Log.d(TAG, "应用进入后台，开始同步观看历史")
-                val count = SupabaseAppExitSyncManager.performExitSync(applicationContext)
+                val appContext = applicationContext
+                val count = SupabaseAppExitSyncManager.performExitSync(appContext)
                 Log.d(TAG, "后台同步完成，同步了 $count 条观看记录")
             } catch (e: Exception) {
                 Log.e(TAG, "后台同步观看历史失败", e)
@@ -260,11 +275,12 @@ class MainActivity : ComponentActivity() {
             Log.d(TAG, "未找到观看历史跟踪器实例，无法保存当前观看记录")
         }
 
-        // 确保在应用销毁时同步观看历史
-        appScope.launch {
+        // 使用GlobalScope确保在应用销毁时同步观看历史不受Activity生命周期影响
+        kotlinx.coroutines.GlobalScope.launch(Dispatchers.IO) {
             try {
                 Log.d(TAG, "onDestroy 中同步观看历史")
-                val count = SupabaseAppExitSyncManager.performExitSync(applicationContext)
+                val appContext = applicationContext
+                val count = SupabaseAppExitSyncManager.performExitSync(appContext)
                 Log.d(TAG, "onDestroy 中成功同步 $count 条观看记录")
             } catch (e: Exception) {
                 Log.e(TAG, "应用销毁时同步观看历史失败", e)
