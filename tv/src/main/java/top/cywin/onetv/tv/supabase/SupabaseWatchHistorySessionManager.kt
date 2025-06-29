@@ -241,33 +241,58 @@ object SupabaseWatchHistorySessionManager {
         try {
             // 计算总观看时长
             val totalWatchTime = _watchHistoryItems.sumOf { it.duration }
-            
+
             // 计算观看的频道数量
             val channelSet = _watchHistoryItems.map { it.channelName }.toSet()
             val totalChannels = channelSet.size
-            
-            // 找出观看时长最长的频道
+
+            // 计算总观看次数
+            val totalWatches = _watchHistoryItems.size
+
+            // 计算每个频道的统计数据
             val channelWatchTime = mutableMapOf<String, Long>()
+            val channelWatchCount = mutableMapOf<String, Int>()
+
             _watchHistoryItems.forEach { item ->
-                val current = channelWatchTime.getOrDefault(item.channelName, 0L)
-                channelWatchTime[item.channelName] = current + item.duration
+                val currentTime = channelWatchTime.getOrDefault(item.channelName, 0L)
+                val currentCount = channelWatchCount.getOrDefault(item.channelName, 0)
+
+                channelWatchTime[item.channelName] = currentTime + item.duration
+                channelWatchCount[item.channelName] = currentCount + 1
             }
-            
+
+            // 找出观看时长最长的频道
             val mostWatchedEntry = channelWatchTime.entries.maxByOrNull { it.value }
             val mostWatchedChannel = mostWatchedEntry?.key ?: ""
             val mostWatchedTime = mostWatchedEntry?.value ?: 0L
-            
+
+            // 创建频道统计列表，按观看时长降序排列
+            val channelStatistics = channelWatchTime.entries.map { (channelName, totalDuration) ->
+                ChannelStatistic(
+                    channelName = channelName,
+                    watchCount = channelWatchCount[channelName] ?: 0,
+                    totalDuration = totalDuration
+                )
+            }.sortedByDescending { it.totalDuration }
+
             // 更新统计数据
             _watchStatistics.postValue(
                 SupabaseWatchStatistics(
                     totalWatchTime = totalWatchTime,
                     totalChannels = totalChannels,
+                    totalWatches = totalWatches,
                     mostWatchedChannel = mostWatchedChannel,
-                    mostWatchedTime = mostWatchedTime
+                    mostWatchedTime = mostWatchedTime,
+                    channelStatistics = channelStatistics
                 )
             )
-            
-            Log.d(TAG, "更新观看统计: 总时长=${totalWatchTime}秒, 频道数=${totalChannels}, 最多观看=${mostWatchedChannel}(${mostWatchedTime}秒)")
+
+            Log.d(TAG, "更新观看统计: 总时长=${totalWatchTime}秒, 频道数=${totalChannels}, 观看次数=${totalWatches}, 最多观看=${mostWatchedChannel}(${mostWatchedTime}秒), 频道统计数=${channelStatistics.size}")
+
+            // 记录前几个频道的统计信息
+            channelStatistics.take(5).forEachIndexed { index, stat ->
+                Log.d(TAG, "频道统计 #${index+1}: ${stat.channelName} - 观看${stat.watchCount}次, 总时长${stat.totalDuration}秒")
+            }
         } catch (e: Exception) {
             Log.e(TAG, "更新观看统计失败", e)
         }
