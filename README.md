@@ -14,16 +14,25 @@
 
 OneTV Supabase是一款现代化的Android电视应用，专为提供流畅的直播观看体验而设计。本项目完成了从Cloudflare到Supabase的全面迁移，采用最新的Android开发技术和多模块架构，实现了更快、更稳定、功能更丰富的用户体验。本软件仅供技术研究与学习交流使用，严禁用于任何商业场景或非法用途。
 
-### 构建状态
+## 构建状态
 
-| 工作流          | 状态                                                                                                                  |
-| --------------- | --------------------------------------------------------------------------------------------------------------------- |
-| Android CI      | ![Android CI](https://github.com/HaoHaoKanYa/OneTV_Supabase/actions/workflows/android.yml/badge.svg)                    |
-| Release         | ![Release](https://github.com/HaoHaoKanYa/OneTV_Supabase/actions/workflows/release.yaml/badge.svg)                      |
-| Supabase Deploy | ![Supabase Deploy](https://github.com/HaoHaoKanYa/OneTV_Supabase/actions/workflows/supabase-deploy.yml/badge.svg)       |
+
+
+| 工作流 | 状态 |
+
+|-------|------|
+
+| Android CI | ![Android CI](https://github.com/HaoHaoKanYa/OneTV_Supabase/actions/workflows/android.yml/badge.svg) |
+
+| Release | ![Release](https://github.com/HaoHaoKanYa/OneTV_Supabase/actions/workflows/release.yaml/badge.svg) |
+
+| Supabase Deploy | ![Supabase Deploy](https://github.com/HaoHaoKanYa/OneTV_Supabase/actions/workflows/supabase-deploy.yml/badge.svg) |
+
 | Supabase Config | ![Supabase Config](https://github.com/HaoHaoKanYa/OneTV_Supabase/actions/workflows/check-supabase-config.yml/badge.svg) |
 
-## �� 主要特性
+
+
+
 
 ### 用户界面与体验
 
