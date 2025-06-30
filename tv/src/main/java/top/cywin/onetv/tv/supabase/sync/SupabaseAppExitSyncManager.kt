@@ -10,7 +10,7 @@ import kotlinx.coroutines.sync.withLock
  * 确保应用退出时只执行一次同步操作，避免重复同步
  */
 object SupabaseAppExitSyncManager {
-    private const val TAG = "SupabaseAppExitSyncManager"
+    private const val TAG = "AppExitSyncManager"
     
     // 退出同步锁
     private val exitSyncLock = Mutex()

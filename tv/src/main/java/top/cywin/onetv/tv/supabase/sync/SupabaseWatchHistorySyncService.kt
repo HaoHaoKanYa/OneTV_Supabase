@@ -27,7 +27,7 @@ import java.util.UUID
  * 使用统一的数据格式和处理流程
  */
 object SupabaseWatchHistorySyncService {
-    private const val TAG = "WatchHistorySyncService"
+    private const val TAG = "WatchHistorySync"
 
     // 同步锁，防止并发同步导致重复上传
     private val syncLock = Mutex()
