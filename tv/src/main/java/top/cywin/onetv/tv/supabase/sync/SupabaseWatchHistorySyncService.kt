@@ -134,8 +134,13 @@ object SupabaseWatchHistorySyncService {
                     Log.w(TAG, "由于网络问题，暂停同步以避免重复记录")
                     return 0
                 }
-                e.message?.contains("coroutine scope left") == true -> {
+                e.message?.contains("coroutine scope left") == true ||
+                e.message?.contains("LeftCompositionCancellationException") == true -> {
                     Log.w(TAG, "协程作用域已取消，停止同步操作")
+                    return 0
+                }
+                e is kotlinx.coroutines.CancellationException -> {
+                    Log.w(TAG, "协程被取消，停止同步操作: ${e.message}")
                     return 0
                 }
                 else -> {
@@ -446,8 +451,17 @@ object SupabaseWatchHistorySyncService {
                 e.message?.contains("Unable to resolve host") == true -> {
                     Log.e(TAG, "批量同步网络连接失败: ${e.message}")
                 }
-                e.message?.contains("coroutine scope left") == true -> {
+                e.message?.contains("coroutine scope left") == true ||
+                e.message?.contains("LeftCompositionCancellationException") == true -> {
                     Log.w(TAG, "批量同步协程作用域已取消: ${e.message}")
+                }
+                e is kotlinx.coroutines.CancellationException -> {
+                    Log.w(TAG, "批量同步协程被取消: ${e.message}")
+                }
+                e.message?.contains("Software caused connection abort") == true -> {
+                    Log.w(TAG, "批量同步网络连接中断，但数据可能已成功发送到服务器: ${e.message}")
+                    // 网络连接中断但服务器可能已收到数据，这种情况下不算完全失败
+                    Log.i(TAG, "提示：如果服务器日志显示数据已保存，则同步实际上是成功的")
                 }
                 else -> {
                     Log.e(TAG, "批量同步过程中出错: ${e.message}", e)
