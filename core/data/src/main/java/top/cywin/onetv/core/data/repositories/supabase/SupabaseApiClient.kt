@@ -415,13 +415,34 @@ class SupabaseApiClient {
         timeRange: String = "all",
         sortBy: String = "watch_start",
         sortOrder: String = "desc",
-        method: String = "GET"
+        method: String = "GET",
+        context: android.content.Context? = null
     ): JsonElement = withContext(Dispatchers.IO) {
         try {
             log.d("获取观看历史: page=$page, timeRange=$timeRange, sortBy=$sortBy, method=$method")
-            
+
+            // 获取当前用户ID
+            val currentUserId = if (context != null) {
+                SupabaseSessionManager.getCachedUserData(context)?.userid
+            } else {
+                null
+            }
+            if (currentUserId == null) {
+                log.e("获取观看历史失败: 无有效用户ID")
+                return@withContext buildJsonObject {
+                    put("items", JsonArray(emptyList()))
+                    put("pagination", buildJsonObject {
+                        put("page", page)
+                        put("pageSize", pageSize)
+                        put("totalItems", 0)
+                        put("totalPages", 0)
+                    })
+                    put("error", "无有效用户ID")
+                }
+            }
+
             val response = functions.invoke(
-                "watch_history?action=list&page=$page&pageSize=$pageSize&timeRange=$timeRange&sortBy=$sortBy&sortOrder=$sortOrder"
+                "watch_history?action=list&page=$page&pageSize=$pageSize&timeRange=$timeRange&sortBy=$sortBy&sortOrder=$sortOrder&userId=$currentUserId"
             ) {
                 this.method = io.ktor.http.HttpMethod.Get
             }
@@ -595,13 +616,15 @@ class SupabaseApiClient {
                 put("channelName", channelName)
                 put("channelUrl", channelUrl)
                 put("duration", duration)
-                // 不再需要在请求体中包含userId，Edge Function会从JWT token中获取
+                put("userId", currentUserId)  // 使用app-configs方式时需要在请求体中包含用户ID
             }
 
             log.d("使用app-configs方式调用Edge Function，用户ID=${currentUserId.take(8)}...")
 
-            // 直接调用Edge Function，使用app-configs方式进行权限验证
-            // 这样更简单，避免了复杂的JWT token处理
+            // 调用观看历史记录Edge Function，Edge Function内部使用SERVICE_ROLE_KEY
+            log.d("调用观看历史记录Edge Function")
+
+            // 直接调用Edge Function，Edge Function内部会使用SERVICE_ROLE_KEY访问数据库
             val response = functions.invoke(
                 function = "watch_history",
                 body = requestData
@@ -727,13 +750,15 @@ class SupabaseApiClient {
 
             val requestData = buildJsonObject {
                 put("records", jsonRecords)
-                // 不再需要在请求体中包含userId，Edge Function会从JWT token中获取
+                put("userId", currentUserId)  // 使用app-configs方式时需要在请求体中包含用户ID
             }
 
             log.d("准备发送批量upsert观看历史请求: URL=watch_history_upsert, 用户ID=${currentUserId.take(8)}..., 内容大小=${jsonRecords.toString().length}字节")
 
-            // 直接调用Edge Function，使用app-configs方式进行权限验证
-            // 这样更简单，避免了复杂的JWT token处理
+            // 使用普通客户端调用Edge Function，Edge Function内部使用SERVICE_ROLE_KEY
+            log.d("调用观看历史同步Edge Function")
+
+            // 直接调用Edge Function，Edge Function内部会使用SERVICE_ROLE_KEY访问数据库
             val response = functions.invoke(
                 function = "watch_history_upsert",
                 body = requestData

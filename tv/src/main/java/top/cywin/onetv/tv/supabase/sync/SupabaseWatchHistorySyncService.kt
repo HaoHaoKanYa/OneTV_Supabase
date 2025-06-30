@@ -105,12 +105,64 @@ object SupabaseWatchHistorySyncService {
         
         // 筛选需要同步的记录
         // 只同步具有本地生成ID（UUID格式）的记录
-        val pendingItems = watchHistoryItems.filter { item -> 
-            item.id?.contains("-") ?: false 
+        val localPendingItems = watchHistoryItems.filter { item ->
+            item.id?.contains("-") ?: false
+        }
+
+        if (localPendingItems.isEmpty()) {
+            Log.d(TAG, "没有需要同步的观看历史记录")
+            return 0
+        }
+
+        Log.d(TAG, "发现 ${localPendingItems.size} 条本地记录需要检查同步状态")
+
+        // 获取服务器上已有的记录进行去重检查
+        val serverItems = try {
+            Log.d(TAG, "获取服务器观看历史数据")
+            val items = getServerWatchHistory(context, userId, 1000) // 获取更多记录用于去重
+            if (items.isEmpty()) {
+                Log.d(TAG, "从服务器获取观看历史失败或为空")
+            } else {
+                Log.d(TAG, "从服务器获取到 ${items.size} 条记录用于去重检查")
+            }
+            items
+        } catch (e: Exception) {
+            when {
+                e.message?.contains("Unable to resolve host") == true -> {
+                    Log.e(TAG, "网络连接失败，无法获取服务器记录进行去重: ${e.message}")
+                    // 网络问题时，暂停同步避免重复上传
+                    Log.w(TAG, "由于网络问题，暂停同步以避免重复记录")
+                    return 0
+                }
+                e.message?.contains("coroutine scope left") == true -> {
+                    Log.w(TAG, "协程作用域已取消，停止同步操作")
+                    return 0
+                }
+                else -> {
+                    Log.w(TAG, "获取服务器记录失败，将同步所有本地记录: ${e.message}")
+                    emptyList()
+                }
+            }
+        }
+
+        // 创建服务器记录的唯一标识集合用于去重
+        val serverItemKeys = serverItems.map {
+            "${it.channelName}:${it.channelUrl}:${it.watchStart}"
+        }.toSet()
+
+        // 过滤出真正需要同步的记录（服务器上不存在的记录）
+        val pendingItems = localPendingItems.filter { localItem ->
+            val localKey = "${localItem.channelName}:${localItem.channelUrl}:${localItem.watchStart}"
+            !serverItemKeys.contains(localKey)
+        }
+
+        val duplicateCount = localPendingItems.size - pendingItems.size
+        if (duplicateCount > 0) {
+            Log.d(TAG, "发现 $duplicateCount 条重复记录，跳过同步")
         }
 
         if (pendingItems.isEmpty()) {
-            Log.d(TAG, "没有需要同步的观看历史记录")
+            Log.d(TAG, "所有本地记录在服务器上已存在，无需同步")
             return 0
         }
 
@@ -300,7 +352,20 @@ object SupabaseWatchHistorySyncService {
             Log.e(TAG, "批量同步失败: 无有效会话令牌")
             return@withContext 0
         }
-        
+
+        // 验证会话令牌是否有效
+        try {
+            val userData = SupabaseSessionManager.getCachedUserData(context)
+            if (userData == null) {
+                Log.e(TAG, "批量同步失败: 用户数据缓存丢失")
+                return@withContext 0
+            }
+            Log.d(TAG, "使用用户会话: ${userData.userid.take(8)}...")
+        } catch (e: Exception) {
+            Log.e(TAG, "验证用户会话失败: ${e.message}")
+            return@withContext 0
+        }
+
         // 设置API客户端的会话令牌
         apiClient.setSessionToken(sessionToken)
 
@@ -364,7 +429,17 @@ object SupabaseWatchHistorySyncService {
                 return@withContext 0
             }
         } catch (e: Exception) {
-            Log.e(TAG, "批量同步过程中出错: ${e.message}", e)
+            when {
+                e.message?.contains("Unable to resolve host") == true -> {
+                    Log.e(TAG, "批量同步网络连接失败: ${e.message}")
+                }
+                e.message?.contains("coroutine scope left") == true -> {
+                    Log.w(TAG, "批量同步协程作用域已取消: ${e.message}")
+                }
+                else -> {
+                    Log.e(TAG, "批量同步过程中出错: ${e.message}", e)
+                }
+            }
             return@withContext 0
         }
     }
@@ -486,22 +561,17 @@ object SupabaseWatchHistorySyncService {
     ): List<SupabaseWatchHistoryItem> = withContext(Dispatchers.IO) {
         Log.d(TAG, "获取服务器观看历史数据")
         val apiClient = SupabaseApiClient()
-        
-        // 确保使用最新的会话令牌
-        val sessionToken = SupabaseSessionManager.getSession(context)
-        if (sessionToken != null) {
-            apiClient.setSessionToken(sessionToken)
-        }
 
         try {
             // 调用watch_history Edge Function
-            // 使用getWatchHistory方法
+            // 使用getWatchHistory方法，不再需要设置session token
             val response = apiClient.getWatchHistory(
                 page = 1,
                 pageSize = limit,
                 timeRange = "all",
-                sortBy = "time",
-                sortOrder = "desc"
+                sortBy = "watch_start",  // 修正排序字段
+                sortOrder = "desc",
+                context = context
             )
 
             // 检查响应

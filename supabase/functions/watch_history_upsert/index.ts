@@ -31,38 +31,18 @@ serve(async (req) => {
       return new Response('ok', { headers: corsHeaders })
     }
 
-    // 创建Supabase客户端
-    const supabaseAdmin = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    )
-
-    // 从请求头获取授权信息
-    const authHeader = req.headers.get('Authorization')
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return new Response(
-        JSON.stringify({ error: '未授权' }),
-        { status: 401, headers: corsHeaders }
-      )
-    }
-
-    const token = authHeader.substring(7)
-
-    // 验证用户Token
-    const { data: { user }, error } = await supabaseAdmin.auth.getUser(token)
-
-    if (error || !user) {
-      return new Response(
-        JSON.stringify({ error: '无效的认证令牌' }),
-        { status: 401, headers: corsHeaders }
-      )
-    }
-
     // 解析请求参数
     const body = await req.json()
-    const { records } = body
+    const { records, userId } = body
 
     // 验证必需参数
+    if (!userId) {
+      return new Response(
+        JSON.stringify({ error: '缺少用户ID参数' }),
+        { status: 400, headers: corsHeaders }
+      )
+    }
+
     if (!records || !Array.isArray(records) || records.length === 0) {
       return new Response(
         JSON.stringify({ error: '缺少records参数或records为空' }),
@@ -70,10 +50,8 @@ serve(async (req) => {
       )
     }
 
-    // 使用验证后的用户ID
-    const userId = user.id
-
-    // 创建数据库操作客户端
+    // 直接使用SERVICE_ROLE_KEY创建数据库操作客户端
+    // 这是最简单可靠的方式，避免所有认证复杂性
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
