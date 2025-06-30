@@ -131,13 +131,8 @@ class MainActivity : ComponentActivity() {
                 withContext(Dispatchers.IO) {
                     // 初始化逻辑（可选）
                 }
-            }
-            
-            Log.d(TAG, "开始HTTP服务器")
-            HttpServer.start(applicationContext)
-
-            // 在应用启动时预热缓存
-            lifecycleScope.launch {
+                
+                // 预热缓存逻辑移至这里
                 try {
                     Log.d(TAG, "开始预热应用缓存...")
                     SupabaseCacheManager.preheatCache(applicationContext)
@@ -160,6 +155,9 @@ class MainActivity : ComponentActivity() {
                     Log.e(TAG, "缓存预热失败", e)
                 }
             }
+            
+            Log.d(TAG, "开始HTTP服务器")
+            HttpServer.start(applicationContext)
         }
     }
     

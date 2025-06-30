@@ -290,10 +290,12 @@ fun SupabaseUserSettings(
             }
             
             // 缓存状态逻辑保留，但不再显示指示器
-            var lastLoadedTime = 0L
-            scope.launch {
+            var lastLoadedTime by remember { mutableStateOf(0L) }
+            
+            LaunchedEffect(Unit) {
                 lastLoadedTime = SupabaseUserSettingsSessionManager.getLastLoadedTime(context)
             }
+            
             val currentTime = if (lastLoadedTime > 0) System.currentTimeMillis() else 0
             val timeDiff = currentTime - lastLoadedTime
             
