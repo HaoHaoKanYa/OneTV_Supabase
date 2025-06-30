@@ -146,14 +146,27 @@ object SupabaseWatchHistorySyncService {
         }
 
         // 创建服务器记录的唯一标识集合用于去重
-        val serverItemKeys = serverItems.map {
-            "${it.channelName}:${it.channelUrl}:${it.watchStart}"
+        // 使用更精确的去重逻辑，考虑时间格式差异
+        val serverItemKeys = serverItems.map { serverItem ->
+            val normalizedTime = normalizeTimeString(serverItem.watchStart)
+            "${serverItem.channelName}:${serverItem.channelUrl}:$normalizedTime"
         }.toSet()
+
+        Log.d(TAG, "服务器记录唯一标识: ${serverItemKeys.take(3)}...") // 显示前3个用于调试
 
         // 过滤出真正需要同步的记录（服务器上不存在的记录）
         val pendingItems = localPendingItems.filter { localItem ->
-            val localKey = "${localItem.channelName}:${localItem.channelUrl}:${localItem.watchStart}"
-            !serverItemKeys.contains(localKey)
+            val normalizedLocalTime = normalizeTimeString(localItem.watchStart)
+            val localKey = "${localItem.channelName}:${localItem.channelUrl}:$normalizedLocalTime"
+            val exists = serverItemKeys.contains(localKey)
+
+            if (exists) {
+                Log.d(TAG, "跳过重复记录: ${localItem.channelName} - $normalizedLocalTime")
+            } else {
+                Log.d(TAG, "需要同步记录: ${localItem.channelName} - $normalizedLocalTime")
+            }
+
+            !exists
         }
 
         val duplicateCount = localPendingItems.size - pendingItems.size
@@ -718,5 +731,57 @@ object SupabaseWatchHistorySyncService {
         watchStart: String
     ): String {
         return "$userId:$channelName:$channelUrl:$watchStart"
+    }
+
+    /**
+     * 标准化时间字符串，用于去重比较
+     * 统一转换为北京时间（UTC+8），便于理解和调试
+     */
+    private fun normalizeTimeString(timeString: String): String {
+        return try {
+            val beijingZone = java.time.ZoneId.of("Asia/Shanghai") // 北京时间
+
+            val instant = when {
+                // 处理带时区的ISO格式：2025-06-30T23:06:20.054+08:00
+                timeString.contains("+") || timeString.contains("Z") -> {
+                    java.time.Instant.parse(timeString)
+                }
+                // 处理不带时区的格式：2025-06-30 23:06:20.054
+                timeString.contains(" ") -> {
+                    val formatter = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS")
+                    val localDateTime = java.time.LocalDateTime.parse(timeString, formatter)
+                    // 假设服务器时间是北京时间
+                    localDateTime.atZone(beijingZone).toInstant()
+                }
+                else -> {
+                    // 尝试直接解析
+                    java.time.Instant.parse(timeString)
+                }
+            }
+
+            // 转换为北京时间，去掉毫秒精度以避免微小差异
+            val beijingTime = instant.atZone(beijingZone)
+                .truncatedTo(java.time.temporal.ChronoUnit.SECONDS)
+            val normalizedTime = beijingTime.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
+            Log.d(TAG, "时间标准化为北京时间: $timeString -> $normalizedTime")
+            normalizedTime
+
+        } catch (e: Exception) {
+            // 如果解析失败，尝试其他格式
+            try {
+                // 尝试解析带时区偏移的格式：2025-06-30T23:06:20.054+08:00
+                val formatter = java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
+                val offsetDateTime = java.time.OffsetDateTime.parse(timeString, formatter)
+                val beijingTime = offsetDateTime.atZoneSameInstant(java.time.ZoneId.of("Asia/Shanghai"))
+                    .truncatedTo(java.time.temporal.ChronoUnit.SECONDS)
+                val normalizedTime = beijingTime.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
+                Log.d(TAG, "时间标准化为北京时间(偏移): $timeString -> $normalizedTime")
+                normalizedTime
+            } catch (e2: Exception) {
+                // 如果都解析失败，返回原始字符串
+                Log.w(TAG, "无法解析时间格式: $timeString, 使用原始值")
+                timeString
+            }
+        }
     }
 }

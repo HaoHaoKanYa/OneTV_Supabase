@@ -314,8 +314,13 @@ object SupabaseWatchHistorySessionManager {
     ): SupabaseWatchHistoryItem {
         Log.d(TAG, "添加观看历史: 频道=$channelName, URL=${channelUrl.take(30)}..., 时长=${duration}秒")
         
-        val now = java.time.Instant.now().toString()
-        val startTime = java.time.Instant.now().minusSeconds(duration).toString()
+        // 使用北京时间创建记录，便于理解和调试
+        val beijingZone = java.time.ZoneId.of("Asia/Shanghai")
+        val now = java.time.ZonedDateTime.now(beijingZone)
+        val startTime = now.minusSeconds(duration)
+
+        val nowString = now.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
+        val startTimeString = startTime.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
         
         // 创建新记录
         val newItem = SupabaseWatchHistoryItem(
@@ -323,8 +328,8 @@ object SupabaseWatchHistorySessionManager {
             channelName = channelName,
             channelUrl = channelUrl,
             duration = duration,
-            watchStart = startTime,
-            watchEnd = now,
+            watchStart = startTimeString,
+            watchEnd = nowString,
             userId = currentUserId
         )
         
@@ -359,8 +364,13 @@ object SupabaseWatchHistorySessionManager {
     ): SupabaseWatchHistoryItem = withContext(Dispatchers.IO) {
         Log.d(TAG, "添加观看历史（协程版本）: 频道=$channelName, URL=${channelUrl.take(30)}..., 时长=${duration}秒")
         
-        val now = java.time.Instant.now().toString()
-        val startTime = java.time.Instant.now().minusSeconds(duration).toString()
+        // 使用北京时间创建记录，便于理解和调试
+        val beijingZone = java.time.ZoneId.of("Asia/Shanghai")
+        val now = java.time.ZonedDateTime.now(beijingZone)
+        val startTime = now.minusSeconds(duration)
+
+        val nowString = now.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
+        val startTimeString = startTime.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
         
         // 创建新记录
         val newItem = SupabaseWatchHistoryItem(
@@ -368,8 +378,8 @@ object SupabaseWatchHistorySessionManager {
             channelName = channelName,
             channelUrl = channelUrl,
             duration = duration,
-            watchStart = startTime,
-            watchEnd = now,
+            watchStart = startTimeString,
+            watchEnd = nowString,
             userId = currentUserId
         )
         
