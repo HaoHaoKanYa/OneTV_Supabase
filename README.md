@@ -34,10 +34,6 @@ OneTV Supabase是一款现代化的Android电视应用，专为提供流畅的�
 
 
 
-项目已成功完成从Cloudflare到Supabase的全面迁移，主要改进包括：
-
-### 用户认证系统
-
 - 使用Supabase Auth进行用户注册、登录、密码重置
 - 实现Auth UI组件完成认证流程
 - 优化登录流程，显著提升用户体验
