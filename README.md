@@ -34,13 +34,6 @@ OneTV Supabase是一款现代化的Android电视应用，专为提供流畅的�
 
 
 
-- **多模块架构**：提高代码复用性和可维护性
-- **依赖注入**：使用Koin进行依赖管理
-- **响应式编程**：使用Flow和StateFlow管理UI状态
-- **单一数据源原则**：确保数据一致性和可靠性
-
-## 📊 从Cloudflare到Supabase的迁移
-
 项目已成功完成从Cloudflare到Supabase的全面迁移，主要改进包括：
 
 ### 用户认证系统
