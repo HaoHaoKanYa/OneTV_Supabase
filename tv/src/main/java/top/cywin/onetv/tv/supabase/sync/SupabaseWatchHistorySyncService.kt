@@ -116,18 +116,25 @@ object SupabaseWatchHistorySyncService {
 
         Log.d(TAG, "发现 ${pendingItems.size} 条需要同步的观看历史记录")
 
-        // 混合同步策略：根据记录数量选择最优同步方式
-        // ≤10条：单条同步 - 更好的错误处理和实时反馈
-        // >10条：批量upsert - 更高效率和并发安全性
-        val syncCount = if (pendingItems.size <= 10) {
-            // 少量记录(≤10条)，使用单条同步模式
-            Log.d(TAG, "使用单条同步模式处理 ${pendingItems.size} 条记录")
-            individualSyncToServer(context, pendingItems, userId)
-        } else {
-            // 大量记录(>10条)，使用批量upsert同步模式
+        // 统一同步策略：无论记录数量多少，都使用批量同步模式
+        // 根据项目设定，当观看历史记录≥1条时，全部采用批量同步服务器上传
+        // 单条同步逻辑已暂时注释，不再使用
+        val syncCount = run {
+            // 统一使用批量upsert同步模式处理所有记录
             Log.d(TAG, "使用批量upsert同步模式处理 ${pendingItems.size} 条记录")
             batchUpsertSyncToServer(context, pendingItems, userId)
         }
+
+        // 注释掉的原混合同步策略代码：
+        // val syncCount = if (pendingItems.size <= 10) {
+        //     // 少量记录(≤10条)，使用单条同步模式
+        //     Log.d(TAG, "使用单条同步模式处理 ${pendingItems.size} 条记录")
+        //     individualSyncToServer(context, pendingItems, userId)
+        // } else {
+        //     // 大量记录(>10条)，使用批量upsert同步模式
+        //     Log.d(TAG, "使用批量upsert同步模式处理 ${pendingItems.size} 条记录")
+        //     batchUpsertSyncToServer(context, pendingItems, userId)
+        // }
         
         if (syncCount > 0) {
             Log.d(TAG, "成功同步 $syncCount 条记录到服务器，更新本地数据")
@@ -156,7 +163,10 @@ object SupabaseWatchHistorySyncService {
 
     /**
      * 单条记录同步观看历史到服务器
+     * 注释：根据项目设定，单条同步逻辑已暂时全部注释掉，不再使用
+     * 现在统一使用批量同步服务器上传，无论记录数量是1条还是多条
      */
+    /*
     private suspend fun individualSyncToServer(
         context: Context,
         pendingItems: List<SupabaseWatchHistoryItem>,
@@ -224,6 +234,7 @@ object SupabaseWatchHistorySyncService {
         Log.d(TAG, "单条同步完成: 成功=$successCount/${pendingItems.size}")
         return@withContext successCount
     }
+    */
 
     /**
      * 从服务器同步观看历史到本地
@@ -306,8 +317,8 @@ object SupabaseWatchHistorySyncService {
 
         try {
             // 调用批量upsert Edge Function
-            // 使用batchUpsertWatchHistory方法
-            val response = apiClient.batchUpsertWatchHistory(batchData)
+            // 使用batchUpsertWatchHistory方法，传递用户ID
+            val response = apiClient.batchUpsertWatchHistory(batchData, userId)
 
             // 检查响应
             val success = when {
