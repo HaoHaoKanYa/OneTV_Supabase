@@ -46,7 +46,7 @@ private const val TAG = "SupportRepository"
 class SupportRepository {
     
     private val TAG = "SupportRepository"
-    private val client = SupabaseClient.client
+    val client = SupabaseClient.client
     private val functions = client.functions
     
     // 客服支持状态管理
@@ -748,7 +748,7 @@ class SupportRepository {
 
             // 获取用户资料信息
             val userProfile = client.from("profiles")
-                .select(columns = Columns.list("created_at", "updated_at")) {
+                .select(columns = Columns.list("created_at", "updated_at", "lastlogindevice")) {
                     filter {
                         eq("userid", currentUser.id)
                     }
@@ -768,15 +768,136 @@ class SupportRepository {
                 0
             }
 
+            // 获取观看历史总时长
+            val watchTimeSeconds = try {
+                val watchHistoryStats = client.from("watch_history")
+                    .select(columns = Columns.list("duration")) {
+                        filter {
+                            eq("user_id", currentUser.id)
+                        }
+                    }
+                    .decodeList<JsonObject>()
+                    .sumOf {
+                        try {
+                            it["duration"]?.jsonPrimitive?.content?.toLongOrNull() ?: 0L
+                        } catch (e: Exception) {
+                            0L
+                        }
+                    }
+
+                watchHistoryStats
+            } catch (e: Exception) {
+                Log.e(TAG, "获取观看历史失败", e)
+                0L
+            }
+
+            // 转换观看时长为小时和分钟格式
+            val watchTimeFormatted = if (watchTimeSeconds > 0) {
+                val hours = watchTimeSeconds / 3600
+                val minutes = (watchTimeSeconds % 3600) / 60
+                when {
+                    hours > 0 && minutes > 0 -> "${hours}小时${minutes}分钟"
+                    hours > 0 -> "${hours}小时"
+                    minutes > 0 -> "${minutes}分钟"
+                    else -> "${watchTimeSeconds}秒"
+                }
+            } else {
+                "0分钟"
+            }
+
+            // 获取活跃天数（从登录日志计算）
+            val actualActiveDays = try {
+                val loginLogs = client.from("user_login_logs")
+                    .select(columns = Columns.list("login_time")) {
+                        filter {
+                            eq("user_id", currentUser.id)
+                        }
+                    }
+                    .decodeList<JsonObject>()
+
+                // 计算不同日期的登录天数
+                val uniqueDays = loginLogs.mapNotNull { log ->
+                    try {
+                        val loginTime = log["login_time"]?.jsonPrimitive?.content
+                        loginTime?.substring(0, 10) // 取日期部分 YYYY-MM-DD
+                    } catch (e: Exception) {
+                        null
+                    }
+                }.toSet().size
+
+                uniqueDays
+            } catch (e: Exception) {
+                Log.e(TAG, "获取登录日志失败，使用注册天数", e)
+                activeDays
+            }
+
+            // 解析设备信息
+            val deviceInfo = userProfile?.get("lastlogindevice")?.jsonPrimitive?.content ?: ""
+            val (deviceModel, appVersion, systemVersion) = parseDeviceInfo(deviceInfo)
+
             mapOf(
                 "conversationCount" to conversationCount,
                 "feedbackCount" to feedbackCount,
-                "activeDays" to activeDays,
-                "lastLoginTime" to (userProfile?.get("updated_at")?.jsonPrimitive?.contentOrNull ?: "未知")
+                "activeDays" to actualActiveDays,
+                "watchTime" to watchTimeFormatted,
+                "lastLoginTime" to (userProfile?.get("updated_at")?.jsonPrimitive?.contentOrNull ?: "未知"),
+                "deviceModel" to deviceModel,
+                "appVersion" to appVersion,
+                "systemVersion" to systemVersion
             )
         } catch (e: Exception) {
             Log.e(TAG, "获取用户统计信息失败", e)
             emptyMap()
+        }
+    }
+
+    /**
+     * 解析设备信息字符串
+     * 从lastlogindevice字段解析出设备型号、应用版本、系统版本
+     * 格式示例: "XIAOMI MI TV 4A (Android 9, API 28)"
+     */
+    private fun parseDeviceInfo(deviceInfo: String): Triple<String, String, String> {
+        return try {
+            if (deviceInfo.isBlank()) {
+                return Triple("未知", "未知", "未知")
+            }
+
+            // 解析设备型号（括号前的部分）
+            val deviceModel = if (deviceInfo.contains("(")) {
+                deviceInfo.substring(0, deviceInfo.indexOf("(")).trim()
+            } else {
+                deviceInfo.trim()
+            }
+
+            // 解析系统版本（括号内的Android版本）
+            val systemVersion = if (deviceInfo.contains("Android")) {
+                val androidStart = deviceInfo.indexOf("Android")
+                val commaIndex = deviceInfo.indexOf(",", androidStart)
+                if (commaIndex > androidStart) {
+                    deviceInfo.substring(androidStart, commaIndex).trim()
+                } else {
+                    val parenIndex = deviceInfo.indexOf(")", androidStart)
+                    if (parenIndex > androidStart) {
+                        deviceInfo.substring(androidStart, parenIndex).trim()
+                    } else {
+                        "Android"
+                    }
+                }
+            } else {
+                "未知"
+            }
+
+            // 应用版本（固定值）
+            val appVersion = "2.0.0"
+
+            Triple(
+                if (deviceModel.isNotEmpty()) deviceModel else "未知",
+                appVersion,
+                systemVersion
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "解析设备信息失败: $deviceInfo", e)
+            Triple("未知", "未知", "未知")
         }
     }
 

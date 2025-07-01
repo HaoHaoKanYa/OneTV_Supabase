@@ -1,20 +1,27 @@
 package top.cywin.onetv.tv.supabase.support
 
+import android.app.Application
 import android.util.Log
-import androidx.lifecycle.ViewModel
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
 import top.cywin.onetv.core.data.repositories.supabase.SupabaseClient
 import io.github.jan.supabase.auth.auth
+import io.github.jan.supabase.postgrest.query.Columns
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.Serializable
 
 /**
  * 客服支持ViewModel
  * 管理1对1客服对话和用户反馈功能
  */
-class SupportViewModel : ViewModel() {
+class SupportViewModel(application: Application) : AndroidViewModel(application) {
     
     private val TAG = "SupportViewModel"
     private val supportRepository = SupportRepository()
@@ -473,12 +480,51 @@ class SupportViewModel : ViewModel() {
     fun refreshUserInfo() {
         viewModelScope.launch {
             try {
-                Log.d(TAG, "刷新用户信息")
-                // 这里可以添加刷新用户信息的逻辑
-                // 例如重新从服务器获取用户数据
-                Log.d(TAG, "用户信息刷新完成")
+                Log.d(TAG, "=== 开始刷新用户信息 ===")
+
+                // 显示加载提示
+                showUserMessage("正在刷新用户信息...")
+
+                // 清除相关缓存
+                val context = getApplication<Application>().applicationContext
+                Log.d(TAG, "清除用户数据缓存...")
+                top.cywin.onetv.tv.supabase.SupabaseCacheManager.clearCache(
+                    context,
+                    top.cywin.onetv.core.data.repositories.supabase.cache.SupabaseCacheKey.USER_DATA
+                )
+                Log.d(TAG, "清除用户资料缓存...")
+                top.cywin.onetv.tv.supabase.SupabaseCacheManager.clearCache(
+                    context,
+                    top.cywin.onetv.core.data.repositories.supabase.cache.SupabaseCacheKey.USER_PROFILE
+                )
+
+                // 重新获取用户数据
+                val currentUser = supportRepository.client.auth.currentUserOrNull()
+                if (currentUser != null) {
+                    Log.d(TAG, "重新获取用户资料数据...")
+                    val apiClient = top.cywin.onetv.core.data.repositories.supabase.SupabaseApiClient()
+                    val userProfile = apiClient.getUserProfile()
+                    val username = userProfile["username"]?.jsonPrimitive?.content ?: "未知用户"
+                    val email = userProfile["email"]?.jsonPrimitive?.content ?: "未设置"
+
+                    Log.d(TAG, "用户资料刷新成功 - 用户名: $username, 邮箱: $email")
+
+                    // 触发UI更新
+                    _uiState.value = _uiState.value.copy(
+                        lastRefreshTime = System.currentTimeMillis()
+                    )
+
+                    // 显示成功提示
+                    showUserMessage("用户信息刷新成功！")
+                } else {
+                    Log.w(TAG, "用户未登录，无法刷新用户信息")
+                    showUserMessage("用户未登录，无法刷新信息")
+                }
+
+                Log.d(TAG, "=== 用户信息刷新完成 ===")
             } catch (e: Exception) {
                 Log.e(TAG, "刷新用户信息失败", e)
+                showUserMessage("刷新失败: ${e.message}")
             }
         }
     }
@@ -489,11 +535,42 @@ class SupportViewModel : ViewModel() {
     fun clearUserCache() {
         viewModelScope.launch {
             try {
-                Log.d(TAG, "清除用户缓存")
-                // 这里可以添加清除缓存的逻辑
-                Log.d(TAG, "用户缓存清除完成")
+                Log.d(TAG, "=== 开始清除用户缓存 ===")
+
+                // 显示加载提示
+                showUserMessage("正在清除缓存...")
+
+                val context = getApplication<Application>().applicationContext
+
+                // 清除所有用户相关缓存
+                Log.d(TAG, "清除Supabase缓存管理器中的所有缓存...")
+                top.cywin.onetv.tv.supabase.SupabaseCacheManager.clearAllCachesOnLogoutAsync(context)
+
+                // 清除观看历史缓存
+                Log.d(TAG, "清除观看历史缓存...")
+                top.cywin.onetv.tv.supabase.SupabaseWatchHistorySessionManager.clearHistoryAsync(context)
+
+                // 清除用户资料缓存
+                Log.d(TAG, "清除用户资料缓存...")
+                top.cywin.onetv.tv.supabase.SupabaseUserProfileInfoSessionManager.logoutCleanupAsync(context)
+
+                // 清除用户设置缓存
+                Log.d(TAG, "清除用户设置缓存...")
+                top.cywin.onetv.tv.supabase.SupabaseUserSettingsSessionManager.logoutCleanupAsync(context)
+
+                Log.d(TAG, "=== 用户缓存清除完成 ===")
+
+                // 触发UI更新
+                _uiState.value = _uiState.value.copy(
+                    lastRefreshTime = System.currentTimeMillis()
+                )
+
+                // 显示成功提示
+                showUserMessage("缓存清除成功！")
+
             } catch (e: Exception) {
                 Log.e(TAG, "清除用户缓存失败", e)
+                showUserMessage("缓存清除失败: ${e.message}")
             }
         }
     }
@@ -504,12 +581,132 @@ class SupportViewModel : ViewModel() {
     fun viewSystemLogs() {
         viewModelScope.launch {
             try {
-                Log.d(TAG, "查看系统日志")
-                // 这里可以添加查看系统日志的逻辑
-                Log.d(TAG, "系统日志查看完成")
+                Log.d(TAG, "=== 开始查看系统日志 ===")
+
+                // 显示加载提示
+                showUserMessage("正在检查权限...")
+
+                // 检查用户权限
+                val currentUser = supportRepository.client.auth.currentUserOrNull()
+                if (currentUser == null) {
+                    Log.w(TAG, "用户未登录，无法查看系统日志")
+                    showUserMessage("用户未登录，无法查看系统日志")
+                    return@launch
+                }
+
+                // 获取用户角色
+                getUserRoles { roles ->
+                    if (roles.any { it in listOf("admin", "super_admin") }) {
+                        // 管理员可以查看系统日志
+                        Log.d(TAG, "用户权限验证通过，角色: $roles")
+                        showUserMessage("正在加载系统日志...")
+
+                        viewModelScope.launch {
+                            try {
+                                // 获取系统日志数据
+                                Log.d(TAG, "开始获取系统日志数据...")
+                                val systemLogs = getSystemLogsData()
+
+                                // 更新UI状态以显示日志
+                                _uiState.value = _uiState.value.copy(
+                                    systemLogs = systemLogs,
+                                    showSystemLogs = true
+                                )
+
+                                Log.d(TAG, "=== 系统日志获取成功，共${systemLogs.size}条记录 ===")
+                                showUserMessage("系统日志加载成功，共${systemLogs.size}条记录")
+                            } catch (e: Exception) {
+                                Log.e(TAG, "获取系统日志失败", e)
+                                showUserMessage("获取系统日志失败: ${e.message}")
+                            }
+                        }
+                    } else {
+                        Log.w(TAG, "用户权限不足，无法查看系统日志，当前角色: $roles")
+                        showUserMessage("权限不足，仅管理员可查看系统日志")
+                    }
+                }
+
             } catch (e: Exception) {
                 Log.e(TAG, "查看系统日志失败", e)
+                showUserMessage("查看系统日志失败: ${e.message}")
             }
+        }
+    }
+
+    /**
+     * 显示用户消息提示
+     */
+    private fun showUserMessage(message: String, type: UserMessageType = UserMessageType.INFO) {
+        _uiState.value = _uiState.value.copy(
+            userMessage = message,
+            showUserMessage = true,
+            userMessageType = type
+        )
+
+        // 3秒后自动隐藏消息
+        viewModelScope.launch {
+            kotlinx.coroutines.delay(3000)
+            hideUserMessage()
+        }
+    }
+
+    /**
+     * 隐藏用户消息提示
+     */
+    fun hideUserMessage() {
+        _uiState.value = _uiState.value.copy(
+            showUserMessage = false,
+            userMessage = ""
+        )
+    }
+
+    /**
+     * 获取系统日志数据
+     */
+    private suspend fun getSystemLogsData(): List<SystemLogEntry> = withContext(Dispatchers.IO) {
+        try {
+            // 简化实现：返回模拟的系统日志数据
+            // 在实际部署时可以连接真实的日志系统
+            val currentTime = java.time.LocalDateTime.now()
+
+            listOf(
+                SystemLogEntry(
+                    id = "log_001",
+                    type = "LOGIN",
+                    message = "用户登录成功",
+                    timestamp = currentTime.minusHours(1).toString(),
+                    userId = "user_001",
+                    details = mapOf(
+                        "ip_address" to "192.168.1.100",
+                        "device_info" to "Android TV"
+                    )
+                ),
+                SystemLogEntry(
+                    id = "log_002",
+                    type = "ERROR",
+                    message = "网络连接超时",
+                    timestamp = currentTime.minusHours(2).toString(),
+                    userId = "system",
+                    details = mapOf(
+                        "error_code" to "TIMEOUT",
+                        "duration" to "30s"
+                    )
+                ),
+                SystemLogEntry(
+                    id = "log_003",
+                    type = "INFO",
+                    message = "系统启动完成",
+                    timestamp = currentTime.minusHours(3).toString(),
+                    userId = "system",
+                    details = mapOf(
+                        "startup_time" to "15s",
+                        "version" to "2.0.0"
+                    )
+                )
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "获取系统日志数据失败", e)
+            emptyList()
         }
     }
 

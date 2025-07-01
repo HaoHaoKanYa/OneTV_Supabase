@@ -345,8 +345,25 @@ data class SupportUiState(
     val showRoleManagement: Boolean = false,
     val showUserManagement: Boolean = false,
     val showFeedbackManagement: Boolean = false,
-    val showSupportDesk: Boolean = false
+    val showSupportDesk: Boolean = false,
+    val showSystemLogs: Boolean = false,
+    val systemLogs: List<SystemLogEntry> = emptyList(),
+    val lastRefreshTime: Long = 0L,
+    // 用户消息提示相关
+    val userMessage: String = "",
+    val showUserMessage: Boolean = false,
+    val userMessageType: UserMessageType = UserMessageType.INFO
 )
+
+/**
+ * 用户消息类型
+ */
+enum class UserMessageType {
+    INFO,    // 信息提示
+    SUCCESS, // 成功提示
+    WARNING, // 警告提示
+    ERROR    // 错误提示
+}
 
 /**
  * 用户资料数据类
@@ -387,6 +404,19 @@ data class UserProfile(
         return roles.contains("admin") || roles.contains("super_admin")
     }
 }
+
+/**
+ * 系统日志条目数据类
+ */
+@Serializable
+data class SystemLogEntry(
+    val id: String,
+    val type: String, // LOGIN, ERROR, WARNING, INFO等
+    val message: String,
+    val timestamp: String,
+    val userId: String = "",
+    val details: Map<String, String> = emptyMap()
+)
 
 /**
  * 用户角色数据类（多角色系统）
