@@ -246,13 +246,19 @@ fun SupabaseUserProfileScreen(
                     isSelected = selectedTab == 3,
                     onClick = { selectedTab = 3 }
                 )
-                
+
+                HorizontalTabItem(
+                    title = "客服支持",
+                    isSelected = selectedTab == 4,
+                    onClick = { selectedTab = 4 }
+                )
+
                 // 根据登录状态动态显示"前往登录"或"退出应用"标签
                 HorizontalTabItem(
                     title = if (isLoggedIn) "退出账号" else "前往登录",
-                    isSelected = selectedTab == 4,
-                    onClick = { 
-                        selectedTab = 4
+                    isSelected = selectedTab == 5,
+                    onClick = {
+                        selectedTab = 5
                         if (isLoggedIn) {
                             // 退出账号逻辑
                             scope.launch {
@@ -331,7 +337,8 @@ fun SupabaseUserProfileScreen(
                 1 -> SupabaseVipManager(userData, isLoading, context)
                 2 -> SupabaseUserSettings(userData, isLoading, context)
                 3 -> SupabaseWatchHistory(userData, isLoading, context)
-                4 -> if (isLoggedIn) {
+                4 -> top.cywin.onetv.tv.supabase.support.SupabaseSupportCenter(userData, isLoading, context)
+                5 -> if (isLoggedIn) {
                     // 退出账号的提示界面
                     Box(
                         modifier = Modifier.fillMaxSize(),

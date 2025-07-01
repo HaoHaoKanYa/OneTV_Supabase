@@ -1,0 +1,579 @@
+package top.cywin.onetv.tv.supabase.support
+
+import android.util.Log
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
+
+private const val TAG = "SupportModels"
+
+/**
+ * 客服对话数据模型
+ */
+@Serializable
+data class SupportConversation(
+    val id: String,
+    val userId: String,
+    val supportId: String? = null,
+    val conversationTitle: String = "客服对话",
+    val status: String = "open", // open, closed, waiting
+    val priority: String = "normal", // low, normal, high, urgent
+    val createdAt: String,
+    val updatedAt: String,
+    val closedAt: String? = null,
+    val lastMessageAt: String
+) {
+    companion object {
+        const val STATUS_OPEN = "open"
+        const val STATUS_CLOSED = "closed"
+        const val STATUS_WAITING = "waiting"
+        
+        const val PRIORITY_LOW = "low"
+        const val PRIORITY_NORMAL = "normal"
+        const val PRIORITY_HIGH = "high"
+        const val PRIORITY_URGENT = "urgent"
+    }
+    
+    /**
+     * 获取状态显示文本
+     */
+    fun getStatusText(): String {
+        Log.d(TAG, "SupportConversation.getStatusText: 获取状态文本 - status = $status")
+        return when (status) {
+            STATUS_OPEN -> "进行中"
+            STATUS_CLOSED -> "已关闭"
+            STATUS_WAITING -> "等待客服"
+            else -> {
+                Log.w(TAG, "SupportConversation.getStatusText: 未知状态 = $status")
+                "未知状态"
+            }
+        }
+    }
+    
+    /**
+     * 获取优先级显示文本
+     */
+    fun getPriorityText(): String {
+        Log.d(TAG, "SupportConversation.getPriorityText: 获取优先级文本 - priority = $priority")
+        return when (priority) {
+            PRIORITY_LOW -> "低"
+            PRIORITY_NORMAL -> "普通"
+            PRIORITY_HIGH -> "高"
+            PRIORITY_URGENT -> "紧急"
+            else -> {
+                Log.w(TAG, "SupportConversation.getPriorityText: 未知优先级 = $priority，使用默认值")
+                "普通"
+            }
+        }
+    }
+    
+    /**
+     * 获取格式化的最后消息时间
+     */
+    fun getFormattedLastMessageTime(): String {
+        Log.d(TAG, "SupportConversation.getFormattedLastMessageTime: 格式化时间 - lastMessageAt = $lastMessageAt")
+        return try {
+            val dateTime = LocalDateTime.parse(lastMessageAt.replace("Z", ""))
+            val formatted = dateTime.format(DateTimeFormatter.ofPattern("MM-dd HH:mm"))
+            Log.d(TAG, "SupportConversation.getFormattedLastMessageTime: 格式化成功 = $formatted")
+            formatted
+        } catch (e: Exception) {
+            Log.e(TAG, "SupportConversation.getFormattedLastMessageTime: 时间格式化失败", e)
+            "未知时间"
+        }
+    }
+
+
+}
+
+/**
+ * 客服消息数据模型
+ */
+@Serializable
+data class SupportMessage(
+    val id: String,
+    val conversationId: String,
+    val senderId: String,
+    val messageText: String,
+    val messageType: String = "text", // text, image, file, system
+    val isFromSupport: Boolean = false,
+    val readAt: String? = null,
+    val createdAt: String
+) {
+    companion object {
+        const val TYPE_TEXT = "text"
+        const val TYPE_IMAGE = "image"
+        const val TYPE_FILE = "file"
+        const val TYPE_SYSTEM = "system"
+    }
+    
+    /**
+     * 获取格式化的时间
+     */
+    fun getFormattedTime(): String {
+        return try {
+            val dateTime = LocalDateTime.parse(createdAt.replace("Z", ""))
+            dateTime.format(DateTimeFormatter.ofPattern("HH:mm"))
+        } catch (e: Exception) {
+            "00:00"
+        }
+    }
+    
+    /**
+     * 获取格式化的日期时间
+     */
+    fun getFormattedDateTime(): String {
+        return try {
+            val dateTime = LocalDateTime.parse(createdAt.replace("Z", ""))
+            dateTime.format(DateTimeFormatter.ofPattern("MM-dd HH:mm"))
+        } catch (e: Exception) {
+            "未知时间"
+        }
+    }
+    
+    /**
+     * 检查消息是否已读
+     */
+    fun isRead(): Boolean {
+        return readAt != null
+    }
+}
+
+/**
+ * 用户反馈数据模型
+ */
+@Serializable
+data class UserFeedback(
+    val id: String,
+    val userId: String,
+    val feedbackType: String = "general", // bug, feature, complaint, suggestion, general
+    val title: String,
+    val description: String,
+    val status: String = "submitted", // submitted, reviewing, resolved, closed
+    val priority: String = "normal", // low, normal, high
+    val adminResponse: String? = null,
+    val adminId: String? = null,
+    val deviceInfo: JsonObject? = null,
+    val appVersion: String? = null,
+    val createdAt: String,
+    val updatedAt: String,
+    val resolvedAt: String? = null
+) {
+    companion object {
+        const val TYPE_BUG = "bug"
+        const val TYPE_FEATURE = "feature"
+        const val TYPE_COMPLAINT = "complaint"
+        const val TYPE_SUGGESTION = "suggestion"
+        const val TYPE_GENERAL = "general"
+        
+        const val STATUS_SUBMITTED = "submitted"
+        const val STATUS_REVIEWING = "reviewing"
+        const val STATUS_RESOLVED = "resolved"
+        const val STATUS_CLOSED = "closed"
+        
+        const val PRIORITY_LOW = "low"
+        const val PRIORITY_NORMAL = "normal"
+        const val PRIORITY_HIGH = "high"
+    }
+    
+    /**
+     * 获取反馈类型显示文本
+     */
+    fun getTypeText(): String {
+        return when (feedbackType) {
+            TYPE_BUG -> "问题报告"
+            TYPE_FEATURE -> "功能建议"
+            TYPE_COMPLAINT -> "投诉建议"
+            TYPE_SUGGESTION -> "改进建议"
+            TYPE_GENERAL -> "一般反馈"
+            else -> "其他"
+        }
+    }
+    
+    /**
+     * 获取状态显示文本
+     */
+    fun getStatusText(): String {
+        return when (status) {
+            STATUS_SUBMITTED -> "已提交"
+            STATUS_REVIEWING -> "处理中"
+            STATUS_RESOLVED -> "已解决"
+            STATUS_CLOSED -> "已关闭"
+            else -> "未知状态"
+        }
+    }
+    
+    /**
+     * 获取优先级显示文本
+     */
+    fun getPriorityText(): String {
+        return when (priority) {
+            PRIORITY_LOW -> "低"
+            PRIORITY_NORMAL -> "普通"
+            PRIORITY_HIGH -> "高"
+            else -> "普通"
+        }
+    }
+    
+    /**
+     * 获取格式化的创建时间
+     */
+    fun getFormattedCreatedTime(): String {
+        return try {
+            val dateTime = LocalDateTime.parse(createdAt.replace("Z", ""))
+            dateTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
+        } catch (e: Exception) {
+            "未知时间"
+        }
+    }
+
+
+}
+
+/**
+ * 发送消息请求模型
+ */
+@Serializable
+data class SendSupportMessageRequest(
+    val conversationId: String,
+    val messageText: String,
+    val messageType: String = SupportMessage.TYPE_TEXT
+)
+
+/**
+ * 创建对话请求模型
+ */
+@Serializable
+data class CreateConversationRequest(
+    val title: String = "客服对话",
+    val priority: String = SupportConversation.PRIORITY_NORMAL,
+    val initialMessage: String
+)
+
+/**
+ * 提交反馈请求模型
+ */
+@Serializable
+data class SubmitFeedbackRequest(
+    val feedbackType: String,
+    val title: String,
+    val description: String,
+    val priority: String = UserFeedback.PRIORITY_NORMAL,
+    val deviceInfo: JsonObject? = null,
+    val appVersion: String? = null
+)
+
+/**
+ * 扩展的客服对话显示模型（用于工作台显示）
+ */
+data class SupportConversationDisplay(
+    val id: String,
+    val userId: String,
+    val supportId: String? = null,
+    val conversationTitle: String = "客服对话",
+    val status: String = "open", // open, closed, waiting
+    val priority: String = "normal", // low, normal, high, urgent
+    val createdAt: String,
+    val updatedAt: String,
+    val closedAt: String? = null,
+    val lastMessageAt: String,
+    val lastMessage: String = "", // 最后一条消息内容
+    val tags: List<String> = emptyList(), // 标签
+    val customerSatisfaction: Double? = null // 客户满意度
+) {
+    companion object {
+        fun fromSupportConversation(
+            conversation: SupportConversation,
+            lastMessage: String = "",
+            tags: List<String> = emptyList(),
+            customerSatisfaction: Double? = null
+        ): SupportConversationDisplay {
+            return SupportConversationDisplay(
+                id = conversation.id,
+                userId = conversation.userId,
+                supportId = conversation.supportId,
+                conversationTitle = conversation.conversationTitle,
+                status = conversation.status,
+                priority = conversation.priority,
+                createdAt = conversation.createdAt,
+                updatedAt = conversation.updatedAt,
+                closedAt = conversation.closedAt,
+                lastMessageAt = conversation.lastMessageAt,
+                lastMessage = lastMessage,
+                tags = tags,
+                customerSatisfaction = customerSatisfaction
+            )
+        }
+    }
+}
+
+/**
+ * 客服对话状态
+ */
+data class SupportConversationState(
+    val conversation: SupportConversation? = null,
+    val messages: List<SupportMessage> = emptyList(),
+    val isLoading: Boolean = false,
+    val error: String? = null,
+    val isConnected: Boolean = false,
+    val unreadCount: Int = 0
+)
+
+/**
+ * 用户反馈状态
+ */
+data class UserFeedbackState(
+    val feedbackList: List<UserFeedback> = emptyList(),
+    val isLoading: Boolean = false,
+    val error: String? = null
+)
+
+/**
+ * 客服支持UI状态
+ */
+data class SupportUiState(
+    val conversationState: SupportConversationState = SupportConversationState(),
+    val feedbackState: UserFeedbackState = UserFeedbackState(),
+    val currentInputMessage: String = "",
+    val showConversation: Boolean = false,
+    val showFeedbackForm: Boolean = false,
+    val showFeedbackList: Boolean = false,
+    val showRoleManagement: Boolean = false,
+    val showUserManagement: Boolean = false,
+    val showFeedbackManagement: Boolean = false,
+    val showSupportDesk: Boolean = false
+)
+
+/**
+ * 用户资料数据类
+ */
+@Serializable
+data class UserProfile(
+    val id: String,
+    val username: String? = null,
+    val email: String? = null,
+    val isVip: Boolean = false,
+    val roles: List<String> = emptyList(),
+    val createdAt: String,
+    val updatedAt: String? = null
+) {
+    /**
+     * 获取格式化的创建时间
+     */
+    fun getFormattedCreatedTime(): String {
+        return try {
+            val dateTime = LocalDateTime.parse(createdAt.replace("Z", ""))
+            dateTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
+        } catch (e: Exception) {
+            "未知时间"
+        }
+    }
+
+    /**
+     * 检查是否有指定角色
+     */
+    fun hasRole(role: String): Boolean {
+        return roles.contains(role)
+    }
+
+    /**
+     * 检查是否是管理员
+     */
+    fun isAdmin(): Boolean {
+        return roles.contains("admin") || roles.contains("super_admin")
+    }
+}
+
+/**
+ * 用户角色数据类（多角色系统）
+ */
+@Serializable
+data class UserRole(
+    val id: String,
+    val userId: String,
+    val roleType: String,
+    val grantedAt: String,
+    val expiresAt: String? = null,
+    val grantedBy: String? = null,
+    val isActive: Boolean = true,
+    val rolePermissions: Map<String, JsonElement> = emptyMap(),
+    val createdAt: String,
+    val updatedAt: String
+) {
+    companion object {
+        // 角色类型常量
+        const val ROLE_USER = "user"
+        const val ROLE_VIP = "vip"
+        const val ROLE_MODERATOR = "moderator"
+        const val ROLE_SUPPORT = "support"
+        const val ROLE_ADMIN = "admin"
+        const val ROLE_SUPER_ADMIN = "super_admin"
+
+        // 角色显示名称
+        fun getRoleDisplayName(roleType: String): String {
+            return when (roleType) {
+                ROLE_SUPER_ADMIN -> "超级管理员"
+                ROLE_ADMIN -> "管理员"
+                ROLE_SUPPORT -> "客服"
+                ROLE_MODERATOR -> "版主"
+                ROLE_VIP -> "VIP用户"
+                ROLE_USER -> "普通用户"
+                else -> roleType
+            }
+        }
+
+        // 角色权限级别
+        fun getRoleLevel(roleType: String): Int {
+            return when (roleType) {
+                ROLE_SUPER_ADMIN -> 6
+                ROLE_ADMIN -> 5
+                ROLE_SUPPORT -> 4
+                ROLE_MODERATOR -> 3
+                ROLE_VIP -> 2
+                ROLE_USER -> 1
+                else -> 0
+            }
+        }
+    }
+
+    /**
+     * 检查角色是否已过期
+     */
+    fun isExpired(): Boolean {
+        return expiresAt?.let { expiry ->
+            try {
+                val expiryTime = LocalDateTime.parse(expiry.replace("Z", ""))
+                LocalDateTime.now().isAfter(expiryTime)
+            } catch (e: Exception) {
+                false
+            }
+        } ?: false
+    }
+
+    /**
+     * 检查角色是否有效（活跃且未过期）
+     */
+    fun isEffective(): Boolean {
+        return isActive && !isExpired()
+    }
+
+    /**
+     * 获取格式化的授予时间
+     */
+    fun getFormattedGrantedTime(): String {
+        return try {
+            val dateTime = LocalDateTime.parse(grantedAt.replace("Z", ""))
+            dateTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
+        } catch (e: Exception) {
+            "时间解析错误"
+        }
+    }
+
+    /**
+     * 获取格式化的过期时间
+     */
+    fun getFormattedExpiryTime(): String? {
+        return expiresAt?.let { expiry ->
+            try {
+                val dateTime = LocalDateTime.parse(expiry.replace("Z", ""))
+                dateTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
+            } catch (e: Exception) {
+                "时间解析错误"
+            }
+        }
+    }
+}
+
+/**
+ * 角色权限配置数据类
+ */
+@Serializable
+data class RolePermission(
+    val roleName: String,
+    val permissions: JsonObject,
+    val description: String,
+    val createdAt: String
+) {
+    /**
+     * 检查是否有特定权限
+     */
+    fun hasPermission(permissionPath: String): Boolean {
+        val pathParts = permissionPath.split(".")
+        return when (pathParts.size) {
+            1 -> {
+                val value = permissions[pathParts[0]]?.jsonPrimitive
+                value?.content?.toBoolean() ?: false
+            }
+            2 -> {
+                val category = permissions[pathParts[0]]?.jsonObject
+                val value = category?.get(pathParts[1])?.jsonPrimitive
+                value?.content?.toBoolean() ?: false
+            }
+            else -> false
+        }
+    }
+}
+
+/**
+ * 用户多角色信息数据类
+ */
+@Serializable
+data class UserMultiRoleInfo(
+    val userId: String,
+    val username: String,
+    val email: String? = null,
+    val primaryRole: String,
+    val activeRoles: List<String>,
+    val inactiveRoles: List<String> = emptyList(),
+    val isVip: Boolean = false,
+    val accountStatus: String = "active"
+) {
+    /**
+     * 检查是否有指定角色
+     */
+    fun hasRole(roleType: String): Boolean {
+        return activeRoles.contains(roleType)
+    }
+
+    /**
+     * 检查是否有任意一个指定角色
+     */
+    fun hasAnyRole(roleTypes: List<String>): Boolean {
+        return roleTypes.any { activeRoles.contains(it) }
+    }
+
+    /**
+     * 获取最高权限级别
+     */
+    fun getMaxPermissionLevel(): Int {
+        return activeRoles.maxOfOrNull { UserRole.getRoleLevel(it) } ?: 1
+    }
+
+    /**
+     * 检查是否为管理员
+     */
+    fun isAdmin(): Boolean {
+        return hasAnyRole(listOf(UserRole.ROLE_SUPPORT, UserRole.ROLE_ADMIN, UserRole.ROLE_SUPER_ADMIN))
+    }
+}
+
+/**
+ * 角色管理请求模型
+ */
+@Serializable
+data class AddRoleRequest(
+    val targetUserId: String,
+    val roleType: String,
+    val expiresAt: String? = null,
+    val rolePermissions: JsonObject? = null
+)
+
+@Serializable
+data class RemoveRoleRequest(
+    val targetUserId: String,
+    val roleType: String
+)

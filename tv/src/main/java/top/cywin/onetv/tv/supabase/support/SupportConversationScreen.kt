@@ -1,0 +1,412 @@
+package top.cywin.onetv.tv.supabase.support
+
+import android.util.Log
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.launch
+
+private const val TAG = "SupportConversation"
+
+/**
+ * 客服对话界面
+ * 1对1客服聊天功能
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SupportConversationScreen(
+    modifier: Modifier = Modifier,
+    viewModel: SupportViewModel,
+    onClose: () -> Unit = {}
+) {
+    Log.d(TAG, "SupportConversationScreen: 初始化客服对话界面")
+    val uiState by viewModel.uiState.collectAsState()
+    val currentMessage by viewModel.currentMessage.collectAsState()
+    val listState = rememberLazyListState()
+    val coroutineScope = rememberCoroutineScope()
+
+    // 用户角色和权限状态
+    var userRoles by remember {
+        mutableStateOf<List<String>>(emptyList()).also {
+            Log.d(TAG, "SupportConversationScreen: 初始化用户角色列表")
+        }
+    }
+    var canViewAllConversations by remember {
+        mutableStateOf(false).also {
+            Log.d(TAG, "SupportConversationScreen: 初始化查看所有对话权限 = false")
+        }
+    }
+    var isAdmin by remember {
+        mutableStateOf(false).also {
+            Log.d(TAG, "SupportConversationScreen: 初始化管理员状态 = false")
+        }
+    }
+
+    // 获取用户权限
+    LaunchedEffect(Unit) {
+        viewModel.getUserRoles { roles ->
+            userRoles = roles
+        }
+        viewModel.canViewAllConversations { canView ->
+            canViewAllConversations = canView
+        }
+        viewModel.checkAdminStatus { adminStatus ->
+            isAdmin = adminStatus
+        }
+    }
+    
+    // 当有新消息时自动滚动到底部
+    LaunchedEffect(uiState.conversationState.messages.size) {
+        if (uiState.conversationState.messages.isNotEmpty()) {
+            coroutineScope.launch {
+                listState.animateScrollToItem(uiState.conversationState.messages.size - 1)
+            }
+        }
+    }
+    
+    Card(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = Color.Black.copy(alpha = 0.8f)
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp)
+        ) {
+            // 标题栏
+            ConversationHeader(
+                conversation = uiState.conversationState.conversation,
+                isConnected = uiState.conversationState.isConnected,
+                userRoles = userRoles,
+                isAdmin = isAdmin,
+                onClose = onClose
+            )
+            
+            Spacer(modifier = Modifier.height(8.dp))
+            
+            // 消息列表
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+            ) {
+                if (uiState.conversationState.isLoading) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(color = Color.White)
+                    }
+                } else if (uiState.conversationState.messages.isEmpty()) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                text = "👋 欢迎使用客服支持",
+                                color = Color.White,
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "请描述您遇到的问题，我们会尽快为您解答",
+                                color = Color.Gray,
+                                fontSize = 14.sp
+                            )
+                        }
+                    }
+                } else {
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(uiState.conversationState.messages) { message ->
+                            MessageItem(message = message)
+                        }
+                    }
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(8.dp))
+            
+            // 错误信息显示
+            uiState.conversationState.error?.let { error ->
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = Color.Red.copy(alpha = 0.2f)
+                    )
+                ) {
+                    Text(
+                        text = error,
+                        color = Color.Red,
+                        modifier = Modifier.padding(8.dp),
+                        fontSize = 14.sp
+                    )
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+            
+            // 输入框
+            MessageInputField(
+                message = currentMessage,
+                onMessageChange = viewModel::updateCurrentMessage,
+                onSendMessage = viewModel::sendMessage,
+                enabled = uiState.conversationState.isConnected && !uiState.conversationState.isLoading
+            )
+        }
+    }
+}
+
+/**
+ * 对话标题栏
+ */
+@Composable
+private fun ConversationHeader(
+    conversation: SupportConversation?,
+    isConnected: Boolean,
+    userRoles: List<String>,
+    isAdmin: Boolean,
+    onClose: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column {
+            Row(
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = conversation?.conversationTitle ?: "客服对话",
+                    color = Color.White,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold
+                )
+
+                // 显示管理员标识
+                if (isAdmin) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = Color(0xFFE91E63).copy(alpha = 0.3f)
+                        ),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text(
+                            text = "管理员",
+                            color = Color(0xFFE91E63),
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+            }
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(
+                            when {
+                                !isConnected -> Color.Red
+                                conversation?.status == "waiting" -> Color(0xFFFF9800) // Orange
+                                conversation?.status == "open" -> Color.Green
+                                else -> Color.Gray
+                            }
+                        )
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = when {
+                        !isConnected -> "连接中..."
+                        conversation?.status == "waiting" -> "等待客服"
+                        conversation?.status == "open" -> "客服在线"
+                        else -> "未知状态"
+                    },
+                    color = Color.Gray,
+                    fontSize = 12.sp
+                )
+
+                // 显示用户角色
+                if (userRoles.isNotEmpty() && userRoles != listOf("user")) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "• ${userRoles.joinToString(", ") {
+                            when(it) {
+                                "super_admin" -> "超管"
+                                "admin" -> "管理"
+                                "support" -> "客服"
+                                "moderator" -> "版主"
+                                "vip" -> "VIP"
+                                else -> it
+                            }
+                        }}",
+                        color = Color(0xFFFFD700),
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
+        
+        Button(
+            onClick = onClose,
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Color.Red.copy(alpha = 0.7f)
+            )
+        ) {
+            Text("关闭", color = Color.White)
+        }
+    }
+}
+
+/**
+ * 消息项
+ */
+@Composable
+private fun MessageItem(
+    message: SupportMessage
+) {
+    val isFromSupport = message.isFromSupport
+    val alignment = if (isFromSupport) Alignment.CenterStart else Alignment.CenterEnd
+    val backgroundColor = if (isFromSupport) 
+        Color.Blue.copy(alpha = 0.3f) else Color.Green.copy(alpha = 0.3f)
+    
+    Box(
+        modifier = Modifier.fillMaxWidth(),
+        contentAlignment = alignment
+    ) {
+        Card(
+            modifier = Modifier
+                .widthIn(max = 300.dp)
+                .padding(horizontal = 8.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = backgroundColor
+            ),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(12.dp)
+            ) {
+                // 发送者和时间
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = if (isFromSupport) "客服" else "我",
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = message.getFormattedTime(),
+                        color = Color.Gray,
+                        fontSize = 10.sp
+                    )
+                }
+                
+                Spacer(modifier = Modifier.height(4.dp))
+                
+                // 消息内容
+                Text(
+                    text = message.messageText,
+                    color = Color.White,
+                    fontSize = 14.sp
+                )
+                
+                // 已读状态（仅显示用户发送的消息）
+                if (!isFromSupport && message.isRead()) {
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "已读",
+                        color = Color.Gray,
+                        fontSize = 10.sp
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 消息输入框
+ */
+@Composable
+private fun MessageInputField(
+    message: String,
+    onMessageChange: (String) -> Unit,
+    onSendMessage: () -> Unit,
+    enabled: Boolean
+) {
+    val focusRequester = remember { FocusRequester() }
+    
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        OutlinedTextField(
+            value = message,
+            onValueChange = onMessageChange,
+            modifier = Modifier
+                .weight(1f)
+                .focusRequester(focusRequester),
+            placeholder = {
+                Text(
+                    text = if (enabled) "输入消息..." else "连接中...",
+                    color = Color.Gray
+                )
+            },
+            enabled = enabled,
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedTextColor = Color.White,
+                unfocusedTextColor = Color.White,
+                focusedBorderColor = Color.White,
+                unfocusedBorderColor = Color.Gray
+            ),
+            singleLine = true
+        )
+        
+        Spacer(modifier = Modifier.width(8.dp))
+        
+        Button(
+            onClick = onSendMessage,
+            enabled = enabled && message.trim().isNotEmpty(),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Color.Blue.copy(alpha = 0.7f)
+            )
+        ) {
+            Text("发送", color = Color.White)
+        }
+    }
+}

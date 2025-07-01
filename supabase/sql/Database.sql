@@ -61,8 +61,17 @@ CREATE TABLE public.profiles (
   accountstatus text DEFAULT 'active'::text,
   vipstart timestamp with time zone,
   vipend timestamp with time zone,
+  primary_role USER-DEFINED DEFAULT 'user'::user_role_type,
+  global_permissions jsonb DEFAULT '{}'::jsonb,
   CONSTRAINT profiles_pkey PRIMARY KEY (userid),
   CONSTRAINT profiles_userid_fkey FOREIGN KEY (userid) REFERENCES auth.users(id)
+);
+CREATE TABLE public.role_permissions (
+  role_name USER-DEFINED NOT NULL,
+  permissions jsonb NOT NULL,
+  description text,
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT role_permissions_pkey PRIMARY KEY (role_name)
 );
 CREATE TABLE public.service_messages (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -73,6 +82,53 @@ CREATE TABLE public.service_messages (
   CONSTRAINT service_messages_pkey PRIMARY KEY (id),
   CONSTRAINT service_messages_created_by_fkey FOREIGN KEY (created_by) REFERENCES auth.users(id)
 );
+CREATE TABLE public.support_conversations (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  support_id uuid,
+  conversation_title character varying DEFAULT '客服对话'::character varying,
+  status character varying DEFAULT 'open'::character varying,
+  priority character varying DEFAULT 'normal'::character varying,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  closed_at timestamp with time zone,
+  last_message_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT support_conversations_pkey PRIMARY KEY (id),
+  CONSTRAINT support_conversations_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id),
+  CONSTRAINT support_conversations_support_id_fkey FOREIGN KEY (support_id) REFERENCES auth.users(id)
+);
+CREATE TABLE public.support_messages (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  conversation_id uuid NOT NULL,
+  sender_id uuid NOT NULL,
+  message_text text NOT NULL,
+  message_type character varying DEFAULT 'text'::character varying,
+  is_from_support boolean DEFAULT false,
+  read_at timestamp with time zone,
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT support_messages_pkey PRIMARY KEY (id),
+  CONSTRAINT support_messages_sender_id_fkey FOREIGN KEY (sender_id) REFERENCES auth.users(id),
+  CONSTRAINT support_messages_conversation_id_fkey FOREIGN KEY (conversation_id) REFERENCES public.support_conversations(id)
+);
+CREATE TABLE public.user_feedback (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  feedback_type character varying DEFAULT 'general'::character varying,
+  title character varying NOT NULL,
+  description text NOT NULL,
+  status character varying DEFAULT 'submitted'::character varying,
+  priority character varying DEFAULT 'normal'::character varying,
+  admin_response text,
+  admin_id uuid,
+  device_info jsonb,
+  app_version character varying,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  resolved_at timestamp with time zone,
+  CONSTRAINT user_feedback_pkey PRIMARY KEY (id),
+  CONSTRAINT user_feedback_admin_id_fkey FOREIGN KEY (admin_id) REFERENCES auth.users(id),
+  CONSTRAINT user_feedback_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+);
 CREATE TABLE public.user_login_logs (
   id uuid NOT NULL DEFAULT uuid_generate_v4(),
   user_id uuid,
@@ -81,6 +137,21 @@ CREATE TABLE public.user_login_logs (
   device_info text,
   CONSTRAINT user_login_logs_pkey PRIMARY KEY (id),
   CONSTRAINT user_login_logs_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+);
+CREATE TABLE public.user_roles (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  role_type USER-DEFINED NOT NULL,
+  granted_at timestamp with time zone DEFAULT now(),
+  expires_at timestamp with time zone,
+  granted_by uuid,
+  is_active boolean DEFAULT true,
+  role_permissions jsonb DEFAULT '{}'::jsonb,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT user_roles_pkey PRIMARY KEY (id),
+  CONSTRAINT user_roles_granted_by_fkey FOREIGN KEY (granted_by) REFERENCES auth.users(id),
+  CONSTRAINT user_roles_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
 );
 CREATE TABLE public.user_sessions (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
