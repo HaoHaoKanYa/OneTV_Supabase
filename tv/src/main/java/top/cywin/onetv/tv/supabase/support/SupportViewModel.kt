@@ -214,6 +214,31 @@ class SupportViewModel(application: Application) : AndroidViewModel(application)
                 
                 val success = supportRepository.sendSupportMessage(conversationId, message)
                 if (success) {
+                    // 立即添加消息到本地列表，确保即时显示
+                    val currentUser = supportRepository.client.auth.currentUserOrNull()
+                    if (currentUser != null) {
+                        val newMessage = SupportMessage(
+                            id = java.util.UUID.randomUUID().toString(),
+                            conversationId = conversationId,
+                            senderId = currentUser.id,
+                            messageText = message,
+                            messageType = "text",
+                            isFromSupport = false,
+                            readAt = null,
+                            createdAt = java.time.Instant.now().toString()
+                        )
+
+                        // 更新消息列表
+                        val currentMessages = _uiState.value.conversationState.messages
+                        val updatedMessages = currentMessages + newMessage
+                        _uiState.value = _uiState.value.copy(
+                            conversationState = _uiState.value.conversationState.copy(
+                                messages = updatedMessages
+                            )
+                        )
+                        Log.d(TAG, "消息已立即添加到本地列表，总数: ${updatedMessages.size}")
+                    }
+
                     // 清空输入框
                     _currentMessage.value = ""
                     Log.d(TAG, "消息发送成功")

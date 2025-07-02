@@ -1564,6 +1564,9 @@ class SupportRepository {
             return@withContext true
         } catch (e: Exception) {
             Log.e(TAG, "删除反馈失败", e)
+            Log.e(TAG, "异常类型: ${e.javaClass.simpleName}")
+            Log.e(TAG, "异常消息: ${e.message}")
+            Log.e(TAG, "异常堆栈: ${e.stackTraceToString()}")
             return@withContext false
         }
     }

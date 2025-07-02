@@ -8,6 +8,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -378,7 +380,8 @@ private fun MessageInputField(
     enabled: Boolean
 ) {
     val focusRequester = remember { FocusRequester() }
-    
+    var showEmojiPicker by remember { mutableStateOf(false) }
+
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
@@ -406,15 +409,64 @@ private fun MessageInputField(
         )
         
         Spacer(modifier = Modifier.width(8.dp))
-        
+
+        // 表情按钮
+        IconButton(
+            onClick = { showEmojiPicker = true },
+            enabled = enabled,
+            modifier = Modifier.size(48.dp)
+        ) {
+            Text(
+                text = "😊",
+                fontSize = 20.sp,
+                color = if (enabled) Color.White else Color.Gray
+            )
+        }
+
+        Spacer(modifier = Modifier.width(4.dp))
+
+        // 美化的发送按钮
         Button(
             onClick = onSendMessage,
             enabled = enabled && message.trim().isNotEmpty(),
             colors = ButtonDefaults.buttonColors(
-                containerColor = Color.Blue.copy(alpha = 0.7f)
-            )
+                containerColor = if (enabled && message.trim().isNotEmpty())
+                    Color(0xFF4CAF50) else Color.Gray.copy(alpha = 0.5f),
+                disabledContainerColor = Color.Gray.copy(alpha = 0.3f)
+            ),
+            shape = RoundedCornerShape(24.dp),
+            modifier = Modifier
+                .height(48.dp)
+                .padding(horizontal = 4.dp),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
         ) {
-            Text("发送", color = Color.White)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Send,
+                    contentDescription = "发送",
+                    tint = Color.White,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = "发送",
+                    color = Color.White,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium
+                )
+            }
         }
     }
+
+    // 表情选择器对话框
+    EmojiPickerDialog(
+        visible = showEmojiPicker,
+        onDismiss = { showEmojiPicker = false },
+        onEmojiSelected = { emoji ->
+            onMessageChange(message + emoji)
+        }
+    )
 }

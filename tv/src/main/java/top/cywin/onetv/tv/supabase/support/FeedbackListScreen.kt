@@ -175,10 +175,10 @@ fun FeedbackListScreen(
             ) {
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth(0.67f)
-                        .fillMaxHeight(0.67f)
+                        .fillMaxWidth(0.95f)
+                        .fillMaxHeight(0.95f)
                         .background(
-                            color = Color.Black.copy(alpha = 0.9f),
+                            color = Color(0xFF1A1A1A),
                             shape = RoundedCornerShape(4.dp)
                         )
                         .border(
