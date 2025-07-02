@@ -2,6 +2,7 @@ package top.cywin.onetv.tv.supabase.support
 
 import android.util.Log
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -78,106 +79,97 @@ fun SupportConversationScreen(
         }
     }
     
-    Card(
+    Column(
         modifier = modifier
             .fillMaxSize()
-            .padding(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = Color.Black.copy(alpha = 0.8f)
-        )
+            .padding(4.dp)
     ) {
-        Column(
+        // 标题栏
+        ConversationHeader(
+            conversation = uiState.conversationState.conversation,
+            isConnected = uiState.conversationState.isConnected,
+            userRoles = userRoles,
+            isAdmin = isAdmin,
+            onClose = onClose
+        )
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        // 消息列表
+        Box(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp)
+                .weight(1f)
+                .fillMaxWidth()
         ) {
-            // 标题栏
-            ConversationHeader(
-                conversation = uiState.conversationState.conversation,
-                isConnected = uiState.conversationState.isConnected,
-                userRoles = userRoles,
-                isAdmin = isAdmin,
-                onClose = onClose
-            )
-            
-            Spacer(modifier = Modifier.height(8.dp))
-            
-            // 消息列表
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-            ) {
-                if (uiState.conversationState.isLoading) {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        CircularProgressIndicator(color = Color.White)
-                    }
-                } else if (uiState.conversationState.messages.isEmpty()) {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Text(
-                                text = "👋 欢迎使用客服支持",
-                                color = Color.White,
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = "请描述您遇到的问题，我们会尽快为您解答",
-                                color = Color.Gray,
-                                fontSize = 14.sp
-                            )
-                        }
-                    }
-                } else {
-                    LazyColumn(
-                        state = listState,
-                        modifier = Modifier.fillMaxSize(),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        items(uiState.conversationState.messages) { message ->
-                            MessageItem(message = message)
-                        }
-                    }
-                }
-            }
-            
-            Spacer(modifier = Modifier.height(8.dp))
-            
-            // 错误信息显示
-            uiState.conversationState.error?.let { error ->
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = Color.Red.copy(alpha = 0.2f)
-                    )
+            if (uiState.conversationState.isLoading) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        text = error,
-                        color = Color.Red,
-                        modifier = Modifier.padding(8.dp),
-                        fontSize = 14.sp
-                    )
+                    CircularProgressIndicator(color = Color.White)
                 }
-                Spacer(modifier = Modifier.height(8.dp))
+            } else if (uiState.conversationState.messages.isEmpty()) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = "👋 欢迎使用客服支持",
+                            color = Color.White,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "请描述您遇到的问题，我们会尽快为您解答",
+                            color = Color.Gray,
+                            fontSize = 14.sp
+                        )
+                    }
+                }
+            } else {
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(uiState.conversationState.messages) { message ->
+                        MessageItem(message = message)
+                    }
+                }
             }
-            
-            // 输入框
-            MessageInputField(
-                message = currentMessage,
-                onMessageChange = viewModel::updateCurrentMessage,
-                onSendMessage = viewModel::sendMessage,
-                enabled = uiState.conversationState.isConnected && !uiState.conversationState.isLoading
-            )
         }
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        // 错误信息显示
+        uiState.conversationState.error?.let { error ->
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = Color.Red.copy(alpha = 0.2f)
+                )
+            ) {
+                Text(
+                    text = error,
+                    color = Color.Red,
+                    modifier = Modifier.padding(8.dp),
+                    fontSize = 14.sp
+                )
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+        }
+
+        // 输入框
+        MessageInputField(
+            message = currentMessage,
+            onMessageChange = viewModel::updateCurrentMessage,
+            onSendMessage = viewModel::sendMessage,
+            enabled = uiState.conversationState.isConnected && !uiState.conversationState.isLoading
+        )
     }
 }
 
@@ -308,14 +300,15 @@ private fun MessageItem(
         Card(
             modifier = Modifier
                 .widthIn(max = 300.dp)
-                .padding(horizontal = 8.dp),
+                .padding(horizontal = 2.dp),
             colors = CardDefaults.cardColors(
                 containerColor = backgroundColor
             ),
-            shape = RoundedCornerShape(12.dp)
+            shape = RoundedCornerShape(8.dp),
+            border = BorderStroke(1.dp, Color.Gray.copy(alpha = 0.2f))
         ) {
             Column(
-                modifier = Modifier.padding(12.dp)
+                modifier = Modifier.padding(6.dp)
             ) {
                 // 发送者和时间
                 Row(

@@ -142,6 +142,124 @@ private fun SupportCenterLayout(
                 modifier = Modifier.align(Alignment.TopCenter)
             )
         }
+
+        // 聊天窗口弹窗 - 最大化高度，优化小屏幕体验
+        if (uiState.showConversation) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.7f))
+                    .clickable { /* 防止点击穿透 */ },
+                contentAlignment = Alignment.Center
+            ) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth(0.95f)
+                        .fillMaxHeight(0.95f),
+                    colors = CardDefaults.cardColors(
+                        containerColor = Color(0xFF1A1A1A)
+                    ),
+                    shape = RoundedCornerShape(4.dp),
+                    border = BorderStroke(1.dp, Color.Gray.copy(alpha = 0.3f))
+                ) {
+                    SupportConversationScreen(
+                        viewModel = supportViewModel,
+                        onClose = { supportViewModel.hideConversation() }
+                    )
+                }
+            }
+        }
+
+        // 反馈表单弹窗 - 最大化高度，优化小屏幕体验
+        if (uiState.showFeedbackForm) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.7f))
+                    .clickable { /* 防止点击穿透 */ },
+                contentAlignment = Alignment.Center
+            ) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth(0.95f)
+                        .fillMaxHeight(0.95f),
+                    colors = CardDefaults.cardColors(
+                        containerColor = Color(0xFF1A1A1A)
+                    ),
+                    shape = RoundedCornerShape(4.dp),
+                    border = BorderStroke(1.dp, Color.Gray.copy(alpha = 0.3f))
+                ) {
+                    FeedbackFormScreen(
+                        viewModel = supportViewModel,
+                        onClose = { supportViewModel.hideFeedbackForm() }
+                    )
+                }
+            }
+        }
+
+        // 反馈详情弹窗 - 最大化高度，优化小屏幕体验
+        if (uiState.showFeedbackDetail) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.7f))
+                    .clickable { /* 防止点击穿透 */ },
+                contentAlignment = Alignment.Center
+            ) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth(0.95f)
+                        .fillMaxHeight(0.95f),
+                    colors = CardDefaults.cardColors(
+                        containerColor = Color(0xFF1A1A1A)
+                    ),
+                    shape = RoundedCornerShape(4.dp),
+                    border = BorderStroke(1.dp, Color.Gray.copy(alpha = 0.3f))
+                ) {
+                    uiState.selectedFeedback?.let { feedback ->
+                        FeedbackDetailDialog(
+                            feedback = feedback,
+                            onClose = { supportViewModel.hideFeedbackDetail() },
+                            onWithdraw = { feedbackId ->
+                                supportViewModel.withdrawFeedback(feedbackId)
+                                supportViewModel.hideFeedbackDetail()
+                            },
+                            onDelete = { feedbackId ->
+                                supportViewModel.deleteFeedback(feedbackId)
+                                supportViewModel.hideFeedbackDetail()
+                            }
+                        )
+                    }
+                }
+            }
+        }
+
+        // 反馈列表弹窗 - 最大化高度，优化小屏幕体验
+        if (uiState.showFeedbackList) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.7f))
+                    .clickable { /* 防止点击穿透 */ },
+                contentAlignment = Alignment.Center
+            ) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth(0.95f)
+                        .fillMaxHeight(0.95f),
+                    colors = CardDefaults.cardColors(
+                        containerColor = Color(0xFF1A1A1A)
+                    ),
+                    shape = RoundedCornerShape(4.dp),
+                    border = BorderStroke(1.dp, Color.Gray.copy(alpha = 0.3f))
+                ) {
+                    FeedbackListScreen(
+                        viewModel = supportViewModel,
+                        onClose = { supportViewModel.hideFeedbackList() }
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -454,150 +572,30 @@ private fun SupportContentPanel(
                 ),
                 shape = RoundedCornerShape(topStart = 16.dp, bottomStart = 16.dp)
             )
-            .padding(24.dp)
+            .padding(8.dp)
     ) {
         when (selectedMenuItem) {
             "user_info" -> UserInfoContent(userData, supportViewModel)
             "chat" -> {
-                Box(modifier = Modifier.fillMaxSize()) {
-                    // 主内容区域
-                    ChatStartContent(
-                        onStartChat = { supportViewModel.showConversation() },
-                        supportViewModel = supportViewModel
-                    )
-
-                    // 聊天窗口弹窗 - 居中显示，占据2/3屏幕
-                    if (uiState.showConversation) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(Color.Black.copy(alpha = 0.7f))
-                                .clickable { /* 防止点击穿透 */ },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Card(
-                                modifier = Modifier
-                                    .fillMaxWidth(0.67f)
-                                    .fillMaxHeight(0.67f),
-                                colors = CardDefaults.cardColors(
-                                    containerColor = Color(0xFF1A1A1A)
-                                ),
-                                shape = RoundedCornerShape(16.dp)
-                            ) {
-                                SupportConversationScreen(
-                                    viewModel = supportViewModel,
-                                    onClose = { supportViewModel.hideConversation() }
-                                )
-                            }
-                        }
-                    }
-                }
+                // 主内容区域
+                ChatStartContent(
+                    onStartChat = { supportViewModel.showConversation() },
+                    supportViewModel = supportViewModel
+                )
             }
             "submit_feedback" -> {
-                Box(modifier = Modifier.fillMaxSize()) {
-                    // 主内容区域 - 论坛版块模式
-                    FeedbackStartContent(
-                        onStartFeedback = { supportViewModel.showFeedbackForm() },
-                        supportViewModel = supportViewModel
-                    )
-
-                    // 反馈表单弹窗 - 居中显示，占据2/3屏幕
-                    if (uiState.showFeedbackForm) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(Color.Black.copy(alpha = 0.7f))
-                                .clickable { /* 防止点击穿透 */ },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Card(
-                                modifier = Modifier
-                                    .fillMaxWidth(0.67f)
-                                    .fillMaxHeight(0.67f),
-                                colors = CardDefaults.cardColors(
-                                    containerColor = Color(0xFF1A1A1A)
-                                ),
-                                shape = RoundedCornerShape(16.dp)
-                            ) {
-                                FeedbackFormScreen(
-                                    viewModel = supportViewModel,
-                                    onClose = { supportViewModel.hideFeedbackForm() }
-                                )
-                            }
-                        }
-                    }
-                }
+                // 主内容区域 - 论坛版块模式
+                FeedbackStartContent(
+                    onStartFeedback = { supportViewModel.showFeedbackForm() },
+                    supportViewModel = supportViewModel
+                )
             }
             "my_feedback" -> {
-                Box(modifier = Modifier.fillMaxSize()) {
-                    // 主内容区域 - 论坛版块模式
-                    MyFeedbackContent(
-                        onViewFeedback = { supportViewModel.showFeedbackList() },
-                        supportViewModel = supportViewModel
-                    )
-
-                    // 反馈列表弹窗 - 居中显示，占据2/3屏幕
-                    if (uiState.showFeedbackList) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(Color.Black.copy(alpha = 0.7f))
-                                .clickable { /* 防止点击穿透 */ },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Card(
-                                modifier = Modifier
-                                    .fillMaxWidth(0.67f)
-                                    .fillMaxHeight(0.67f),
-                                colors = CardDefaults.cardColors(
-                                    containerColor = Color(0xFF1A1A1A)
-                                ),
-                                shape = RoundedCornerShape(16.dp)
-                            ) {
-                                FeedbackListScreen(
-                                    viewModel = supportViewModel,
-                                    onClose = { supportViewModel.hideFeedbackList() }
-                                )
-                            }
-                        }
-                    }
-
-                    // 反馈详情弹窗 - 居中显示，占据2/3屏幕
-                    if (uiState.showFeedbackDetail && uiState.selectedFeedback != null) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(Color.Black.copy(alpha = 0.7f))
-                                .clickable { /* 防止点击穿透 */ },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Card(
-                                modifier = Modifier
-                                    .fillMaxWidth(0.67f)
-                                    .fillMaxHeight(0.67f),
-                                colors = CardDefaults.cardColors(
-                                    containerColor = Color(0xFF1A1A1A)
-                                ),
-                                shape = RoundedCornerShape(16.dp)
-                            ) {
-                                FeedbackDetailDialog(
-                                    feedback = uiState.selectedFeedback!!,
-                                    onClose = { supportViewModel.hideFeedbackDetail() },
-                                    onWithdraw = { feedbackId ->
-                                        // 撤销反馈逻辑
-                                        supportViewModel.withdrawFeedback(feedbackId)
-                                        supportViewModel.hideFeedbackDetail()
-                                    },
-                                    onDelete = { feedbackId ->
-                                        // 删除反馈逻辑
-                                        supportViewModel.deleteFeedback(feedbackId)
-                                        supportViewModel.hideFeedbackDetail()
-                                    }
-                                )
-                            }
-                        }
-                    }
-                }
+                // 主内容区域 - 论坛版块模式
+                MyFeedbackContent(
+                    onViewFeedback = { supportViewModel.showFeedbackList() },
+                    supportViewModel = supportViewModel
+                )
             }
             "user_management" -> {
                 if (uiState.showUserManagement) {
@@ -3310,7 +3308,7 @@ fun FeedbackDetailDialog(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(24.dp)
+            .padding(8.dp)
     ) {
         // 标题栏
         Row(

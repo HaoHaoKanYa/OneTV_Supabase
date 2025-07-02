@@ -34,19 +34,11 @@ fun FeedbackListScreen(
         viewModel.loadUserFeedbackList()
     }
     
-    Card(
+    Column(
         modifier = modifier
             .fillMaxSize()
-            .padding(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = Color.Black.copy(alpha = 0.8f)
-        )
+            .padding(4.dp)
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp)
-        ) {
             // 标题栏
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -129,7 +121,6 @@ fun FeedbackListScreen(
                     )
                 }
             }
-        }
     }
 }
 
