@@ -2,6 +2,7 @@ package top.cywin.onetv.tv.supabase.support
 
 import android.util.Log
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.jsonObject
@@ -17,15 +18,15 @@ private const val TAG = "SupportModels"
 @Serializable
 data class SupportConversation(
     val id: String,
-    val userId: String,
-    val supportId: String? = null,
-    val conversationTitle: String = "客服对话",
+    @SerialName("user_id") val userId: String,
+    @SerialName("support_id") val supportId: String? = null,
+    @SerialName("conversation_title") val conversationTitle: String = "客服对话",
     val status: String = "open", // open, closed, waiting
     val priority: String = "normal", // low, normal, high, urgent
-    val createdAt: String,
-    val updatedAt: String,
-    val closedAt: String? = null,
-    val lastMessageAt: String
+    @SerialName("created_at") val createdAt: String,
+    @SerialName("updated_at") val updatedAt: String,
+    @SerialName("closed_at") val closedAt: String? = null,
+    @SerialName("last_message_at") val lastMessageAt: String
 ) {
     companion object {
         const val STATUS_OPEN = "open"
@@ -75,14 +76,57 @@ data class SupportConversation(
      * 获取格式化的最后消息时间
      */
     fun getFormattedLastMessageTime(): String {
-        Log.d(TAG, "SupportConversation.getFormattedLastMessageTime: 格式化时间 - lastMessageAt = $lastMessageAt")
+        Log.d(TAG, "SupportConversation.getFormattedLastMessageTime: 格式化时间 - lastMessageAt = '$lastMessageAt'")
+
+        if (lastMessageAt.isBlank()) {
+            Log.w(TAG, "SupportConversation.getFormattedLastMessageTime: lastMessageAt为空，使用创建时间")
+            return getFormattedCreatedTime()
+        }
+
         return try {
-            val dateTime = LocalDateTime.parse(lastMessageAt.replace("Z", ""))
+            // 处理多种时间格式
+            val cleanedTime = lastMessageAt.replace("Z", "").replace("+00:00", "")
+            Log.d(TAG, "SupportConversation.getFormattedLastMessageTime: 清理后的时间 = '$cleanedTime'")
+
+            val dateTime = if (cleanedTime.contains("T")) {
+                LocalDateTime.parse(cleanedTime)
+            } else {
+                // 如果没有T分隔符，尝试其他格式
+                LocalDateTime.parse(cleanedTime.replace(" ", "T"))
+            }
+
             val formatted = dateTime.format(DateTimeFormatter.ofPattern("MM-dd HH:mm"))
-            Log.d(TAG, "SupportConversation.getFormattedLastMessageTime: 格式化成功 = $formatted")
+            Log.d(TAG, "SupportConversation.getFormattedLastMessageTime: 格式化成功 = '$formatted'")
             formatted
         } catch (e: Exception) {
-            Log.e(TAG, "SupportConversation.getFormattedLastMessageTime: 时间格式化失败", e)
+            Log.e(TAG, "SupportConversation.getFormattedLastMessageTime: 时间格式化失败，原始值='$lastMessageAt'", e)
+            // 如果lastMessageAt格式化失败，尝试使用创建时间
+            try {
+                getFormattedCreatedTime()
+            } catch (e2: Exception) {
+                Log.e(TAG, "SupportConversation.getFormattedLastMessageTime: 创建时间也格式化失败", e2)
+                "未知时间"
+            }
+        }
+    }
+
+    /**
+     * 获取格式化的创建时间
+     */
+    fun getFormattedCreatedTime(): String {
+        Log.d(TAG, "SupportConversation.getFormattedCreatedTime: 格式化创建时间 - createdAt = '$createdAt'")
+        return try {
+            val cleanedTime = createdAt.replace("Z", "").replace("+00:00", "")
+            val dateTime = if (cleanedTime.contains("T")) {
+                LocalDateTime.parse(cleanedTime)
+            } else {
+                LocalDateTime.parse(cleanedTime.replace(" ", "T"))
+            }
+            val formatted = dateTime.format(DateTimeFormatter.ofPattern("MM-dd HH:mm"))
+            Log.d(TAG, "SupportConversation.getFormattedCreatedTime: 格式化成功 = '$formatted'")
+            formatted
+        } catch (e: Exception) {
+            Log.e(TAG, "SupportConversation.getFormattedCreatedTime: 创建时间格式化失败，原始值='$createdAt'", e)
             "未知时间"
         }
     }
@@ -96,13 +140,13 @@ data class SupportConversation(
 @Serializable
 data class SupportMessage(
     val id: String,
-    val conversationId: String,
-    val senderId: String,
-    val messageText: String,
-    val messageType: String = "text", // text, image, file, system
-    val isFromSupport: Boolean = false,
-    val readAt: String? = null,
-    val createdAt: String
+    @SerialName("conversation_id") val conversationId: String,
+    @SerialName("sender_id") val senderId: String,
+    @SerialName("message_text") val messageText: String,
+    @SerialName("message_type") val messageType: String = "text", // text, image, file, system
+    @SerialName("is_from_support") val isFromSupport: Boolean = false,
+    @SerialName("read_at") val readAt: String? = null,
+    @SerialName("created_at") val createdAt: String
 ) {
     companion object {
         const val TYPE_TEXT = "text"
@@ -149,19 +193,19 @@ data class SupportMessage(
 @Serializable
 data class UserFeedback(
     val id: String,
-    val userId: String,
-    val feedbackType: String = "general", // bug, feature, complaint, suggestion, general
+    @SerialName("user_id") val userId: String,
+    @SerialName("feedback_type") val feedbackType: String = "general", // bug, feature, complaint, suggestion, general
     val title: String,
     val description: String,
     val status: String = "submitted", // submitted, reviewing, resolved, closed
     val priority: String = "normal", // low, normal, high
-    val adminResponse: String? = null,
-    val adminId: String? = null,
-    val deviceInfo: JsonObject? = null,
-    val appVersion: String? = null,
-    val createdAt: String,
-    val updatedAt: String,
-    val resolvedAt: String? = null
+    @SerialName("admin_response") val adminResponse: String? = null,
+    @SerialName("admin_id") val adminId: String? = null,
+    @SerialName("device_info") val deviceInfo: JsonObject? = null,
+    @SerialName("app_version") val appVersion: String? = null,
+    @SerialName("created_at") val createdAt: String,
+    @SerialName("updated_at") val updatedAt: String,
+    @SerialName("resolved_at") val resolvedAt: String? = null
 ) {
     companion object {
         const val TYPE_BUG = "bug"
@@ -180,30 +224,22 @@ data class UserFeedback(
         const val PRIORITY_HIGH = "high"
     }
     
-    /**
-     * 获取反馈类型显示文本
-     */
-    fun getTypeText(): String {
-        return when (feedbackType) {
-            TYPE_BUG -> "问题报告"
-            TYPE_FEATURE -> "功能建议"
-            TYPE_COMPLAINT -> "投诉建议"
-            TYPE_SUGGESTION -> "改进建议"
-            TYPE_GENERAL -> "一般反馈"
-            else -> "其他"
-        }
-    }
+
     
     /**
      * 获取状态显示文本
      */
     fun getStatusText(): String {
+        Log.d(TAG, "UserFeedback.getStatusText: 获取状态文本 - status = '$status'")
         return when (status) {
             STATUS_SUBMITTED -> "已提交"
             STATUS_REVIEWING -> "处理中"
             STATUS_RESOLVED -> "已解决"
             STATUS_CLOSED -> "已关闭"
-            else -> "未知状态"
+            else -> {
+                Log.w(TAG, "UserFeedback.getStatusText: 未知状态 = '$status'")
+                "未知状态"
+            }
         }
     }
 
@@ -211,11 +247,41 @@ data class UserFeedback(
      * 获取格式化的创建时间
      */
     fun getFormattedCreatedTime(): String {
+        Log.d(TAG, "UserFeedback.getFormattedCreatedTime: 格式化创建时间 - createdAt = '$createdAt'")
         return try {
-            val dateTime = LocalDateTime.parse(createdAt.replace("Z", ""))
-            dateTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
+            // 处理多种时间格式
+            val cleanedTime = createdAt.replace("Z", "").replace("+00:00", "")
+            Log.d(TAG, "UserFeedback.getFormattedCreatedTime: 清理后的时间 = '$cleanedTime'")
+
+            val dateTime = if (cleanedTime.contains("T")) {
+                LocalDateTime.parse(cleanedTime)
+            } else {
+                LocalDateTime.parse(cleanedTime.replace(" ", "T"))
+            }
+            val formatted = dateTime.format(DateTimeFormatter.ofPattern("MM-dd HH:mm"))
+            Log.d(TAG, "UserFeedback.getFormattedCreatedTime: 格式化成功 = '$formatted'")
+            formatted
         } catch (e: Exception) {
+            Log.e(TAG, "UserFeedback.getFormattedCreatedTime: 创建时间格式化失败，原始值='$createdAt'", e)
             "未知时间"
+        }
+    }
+
+    /**
+     * 获取反馈类型显示文本
+     */
+    fun getTypeText(): String {
+        Log.d(TAG, "UserFeedback.getTypeText: 获取类型文本 - feedbackType = '$feedbackType'")
+        return when (feedbackType) {
+            "bug" -> "问题报告"
+            "feature" -> "功能建议"
+            "complaint" -> "投诉建议"
+            "suggestion" -> "改进建议"
+            "general" -> "一般反馈"
+            else -> {
+                Log.w(TAG, "UserFeedback.getTypeText: 未知类型 = '$feedbackType'")
+                "未知类型"
+            }
         }
     }
     
@@ -329,7 +395,8 @@ data class SupportConversationState(
 data class UserFeedbackState(
     val feedbackList: List<UserFeedback> = emptyList(),
     val isLoading: Boolean = false,
-    val error: String? = null
+    val error: String? = null,
+    val successMessage: String? = null
 )
 
 /**
@@ -351,6 +418,7 @@ data class SupportUiState(
     val showSystemLogs: Boolean = false,
     val systemLogs: List<SystemLogEntry> = emptyList(),
     val lastRefreshTime: Long = 0L,
+    val feedbackRefreshTrigger: Long = 0L, // 用于触发反馈数据刷新
     // 用户消息提示相关
     val userMessage: String = "",
     val showUserMessage: Boolean = false,

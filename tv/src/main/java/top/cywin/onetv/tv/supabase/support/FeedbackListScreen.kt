@@ -1,6 +1,7 @@
 package top.cywin.onetv.tv.supabase.support
 
 import android.util.Log
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -99,7 +100,13 @@ fun FeedbackListScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     items(uiState.feedbackState.feedbackList) { feedback ->
-                        FeedbackItem(feedback = feedback)
+                        FeedbackListItem(
+                            feedback = feedback,
+                            onClick = {
+                                // 点击反馈项打开详情弹窗
+                                viewModel.showFeedbackDetail(feedback)
+                            }
+                        )
                     }
                 }
             }
@@ -125,115 +132,103 @@ fun FeedbackListScreen(
 }
 
 /**
- * 反馈项
+ * 反馈列表项 - 简洁单行论坛帖子样式（无卡片设计）
  */
 @Composable
-private fun FeedbackItem(
-    feedback: UserFeedback
+private fun FeedbackListItem(
+    feedback: UserFeedback,
+    onClick: () -> Unit = {}
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = Color(0xFF2C3E50).copy(alpha = 0.3f)
-        ),
-        shape = RoundedCornerShape(12.dp)
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp)
+    Column {
+        // 单行显示：标题-类型-状态-时间-回复数
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onClick() }
+                .padding(vertical = 8.dp, horizontal = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            // 标题和状态
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = feedback.title,
-                    color = Color.White,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.weight(1f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                
-                StatusChip(status = feedback.status)
-            }
-            
-            Spacer(modifier = Modifier.height(8.dp))
-            
-            // 类型和优先级
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                TypeChip(type = feedback.feedbackType)
-                PriorityChip(priority = feedback.priority)
-            }
-            
-            Spacer(modifier = Modifier.height(8.dp))
-            
-            // 描述
+            // 标题（占据主要空间）
             Text(
-                text = feedback.description,
-                color = Color.Gray,
-                fontSize = 14.sp,
-                maxLines = 2,
+                text = feedback.title,
+                color = Color.White,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.weight(2f),
+                maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            
-            Spacer(modifier = Modifier.height(8.dp))
-            
-            // 管理员回复（如果有）
-            feedback.adminResponse?.let { response ->
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = Color(0xFF4285F4).copy(alpha = 0.2f)
-                    ),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(12.dp)
-                    ) {
-                        Text(
-                            text = "管理员回复：",
-                            color = Color(0xFF4285F4),
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = response,
-                            color = Color.White,
-                            fontSize = 14.sp
-                        )
-                    }
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-            }
-            
-            // 时间信息
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            // 类型
+            Text(
+                text = feedback.getTypeText(),
+                color = Color(0xFF4285F4),
+                fontSize = 12.sp,
+                modifier = Modifier.weight(0.8f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            // 状态
+            Text(
+                text = feedback.getStatusText(),
+                color = when (feedback.status) {
+                    UserFeedback.STATUS_SUBMITTED -> Color(0xFFFF9800)
+                    UserFeedback.STATUS_REVIEWING -> Color(0xFF2196F3)
+                    UserFeedback.STATUS_RESOLVED -> Color(0xFF4CAF50)
+                    UserFeedback.STATUS_CLOSED -> Color(0xFF9E9E9E)
+                    else -> Color.Gray
+                },
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.weight(0.6f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            // 提交时间
+            Text(
+                text = feedback.getFormattedCreatedTime(),
+                color = Color.Gray,
+                fontSize = 12.sp,
+                modifier = Modifier.weight(0.8f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            // 回复数
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(2.dp)
             ) {
                 Text(
-                    text = "提交时间：${feedback.getFormattedCreatedTime()}",
-                    color = Color.Gray,
+                    text = "💬",
                     fontSize = 12.sp
                 )
-                
-                feedback.resolvedAt?.let {
-                    Text(
-                        text = "处理完成",
-                        color = Color.Green,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
+                Text(
+                    text = if (!feedback.adminResponse.isNullOrBlank()) "1" else "0",
+                    color = if (!feedback.adminResponse.isNullOrBlank()) Color(0xFF4285F4) else Color.Gray,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium
+                )
             }
         }
+
+        // 分隔线
+        Divider(
+            color = Color.Gray.copy(alpha = 0.3f),
+            thickness = 0.5.dp,
+            modifier = Modifier.padding(horizontal = 4.dp)
+        )
     }
 }
 

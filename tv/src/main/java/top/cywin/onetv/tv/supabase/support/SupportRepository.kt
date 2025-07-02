@@ -49,9 +49,8 @@ class SupportRepository {
     val client = SupabaseClient.client
     private val functions = client.functions
     
-    // 客服支持状态管理
-    private val _supportUiState = MutableStateFlow(SupportUiState())
-    val supportUiState: StateFlow<SupportUiState> = _supportUiState.asStateFlow()
+    // 消息更新回调
+    private var onMessagesUpdated: ((List<SupportMessage>) -> Unit)? = null
     
     // 实时订阅通道
     private var messageChannel: io.github.jan.supabase.realtime.RealtimeChannel? = null
@@ -61,15 +60,20 @@ class SupportRepository {
      */
     suspend fun getOrCreateActiveConversation(): SupportConversation? = withContext(Dispatchers.IO) {
         try {
-            Log.d(TAG, "获取或创建活跃对话")
-            
+            Log.d(TAG, "=== 开始获取或创建活跃对话 ===")
+
             val currentUser = client.auth.currentUserOrNull()
+            Log.d(TAG, "当前用户状态: ${if (currentUser != null) "已登录 - ${currentUser.id}" else "未登录"}")
+
             if (currentUser == null) {
-                Log.w(TAG, "用户未登录")
+                Log.w(TAG, "用户未登录，无法获取对话")
                 return@withContext null
             }
-            
+
             // 首先查找现有的活跃对话
+            Log.d(TAG, "查询现有活跃对话...")
+            Log.d(TAG, "查询条件: user_id=${currentUser.id}, status=open")
+
             val existingConversations = client.from("support_conversations")
                 .select(columns = Columns.list(
                     "id", "user_id", "support_id", "conversation_title",
@@ -83,34 +87,82 @@ class SupportRepository {
                     order("last_message_at", Order.DESCENDING)
                     limit(1)
                 }
-                .decodeList<SupportConversation>()
-            
+                .decodeList<JsonObject>()
+                .map { conversationJson ->
+                    Log.d(TAG, "解析对话JSON: $conversationJson")
+                    SupportConversation(
+                        id = conversationJson["id"]?.jsonPrimitive?.contentOrNull ?: "",
+                        userId = conversationJson["user_id"]?.jsonPrimitive?.contentOrNull ?: "",
+                        supportId = conversationJson["support_id"]?.jsonPrimitive?.contentOrNull,
+                        conversationTitle = conversationJson["conversation_title"]?.jsonPrimitive?.contentOrNull ?: "客服对话",
+                        status = conversationJson["status"]?.jsonPrimitive?.contentOrNull ?: "open",
+                        priority = conversationJson["priority"]?.jsonPrimitive?.contentOrNull ?: "normal",
+                        createdAt = conversationJson["created_at"]?.jsonPrimitive?.contentOrNull ?: "",
+                        updatedAt = conversationJson["updated_at"]?.jsonPrimitive?.contentOrNull ?: "",
+                        closedAt = conversationJson["closed_at"]?.jsonPrimitive?.contentOrNull,
+                        lastMessageAt = conversationJson["last_message_at"]?.jsonPrimitive?.contentOrNull ?: ""
+                    )
+                }
+
+            Log.d(TAG, "查询结果: 找到 ${existingConversations.size} 个活跃对话")
+
             if (existingConversations.isNotEmpty()) {
-                Log.d(TAG, "找到现有活跃对话")
-                return@withContext existingConversations.first()
+                val conversation = existingConversations.first()
+                Log.d(TAG, "找到现有活跃对话:")
+                Log.d(TAG, "  ID: ${conversation.id}")
+                Log.d(TAG, "  标题: ${conversation.conversationTitle}")
+                Log.d(TAG, "  状态: ${conversation.status}")
+                Log.d(TAG, "  创建时间: ${conversation.createdAt}")
+                Log.d(TAG, "  最后消息时间: ${conversation.lastMessageAt}")
+                return@withContext conversation
             }
-            
+
             // 如果没有活跃对话，创建新的
-            Log.d(TAG, "创建新的客服对话")
-            val newConversation = client.from("support_conversations")
+            Log.d(TAG, "没有找到活跃对话，开始创建新对话...")
+            Log.d(TAG, "插入数据: user_id=${currentUser.id}, conversation_title=客服对话, priority=normal")
+
+            val newConversationJson = client.from("support_conversations")
                 .insert(buildJsonObject {
                     put("user_id", currentUser.id)
                     put("conversation_title", "客服对话")
                     put("priority", SupportConversation.PRIORITY_NORMAL)
                 }) {
                     select(columns = Columns.list(
-                        "id", "user_id", "support_id", "conversation_title", 
-                        "status", "priority", "created_at", "updated_at", 
+                        "id", "user_id", "support_id", "conversation_title",
+                        "status", "priority", "created_at", "updated_at",
                         "closed_at", "last_message_at"
                     ))
                 }
-                .decodeSingle<SupportConversation>()
-            
-            Log.d(TAG, "新对话创建成功: ${newConversation.id}")
+                .decodeSingle<JsonObject>()
+
+            Log.d(TAG, "新对话创建响应JSON: $newConversationJson")
+
+            val newConversation = SupportConversation(
+                id = newConversationJson["id"]?.jsonPrimitive?.contentOrNull ?: "",
+                userId = newConversationJson["user_id"]?.jsonPrimitive?.contentOrNull ?: "",
+                supportId = newConversationJson["support_id"]?.jsonPrimitive?.contentOrNull,
+                conversationTitle = newConversationJson["conversation_title"]?.jsonPrimitive?.contentOrNull ?: "客服对话",
+                status = newConversationJson["status"]?.jsonPrimitive?.contentOrNull ?: "open",
+                priority = newConversationJson["priority"]?.jsonPrimitive?.contentOrNull ?: "normal",
+                createdAt = newConversationJson["created_at"]?.jsonPrimitive?.contentOrNull ?: "",
+                updatedAt = newConversationJson["updated_at"]?.jsonPrimitive?.contentOrNull ?: "",
+                closedAt = newConversationJson["closed_at"]?.jsonPrimitive?.contentOrNull,
+                lastMessageAt = newConversationJson["last_message_at"]?.jsonPrimitive?.contentOrNull ?: ""
+            )
+
+            Log.d(TAG, "=== 新对话创建成功 ===")
+            Log.d(TAG, "  ID: ${newConversation.id}")
+            Log.d(TAG, "  标题: ${newConversation.conversationTitle}")
+            Log.d(TAG, "  状态: ${newConversation.status}")
+            Log.d(TAG, "  创建时间: ${newConversation.createdAt}")
+            Log.d(TAG, "  最后消息时间: ${newConversation.lastMessageAt}")
+
             return@withContext newConversation
-            
+
         } catch (e: Exception) {
-            Log.e(TAG, "获取或创建对话失败", e)
+            Log.e(TAG, "=== 获取或创建对话失败 ===", e)
+            Log.e(TAG, "异常详情: ${e.message}")
+            Log.e(TAG, "异常类型: ${e.javaClass.simpleName}")
             return@withContext null
         }
     }
@@ -168,7 +220,19 @@ class SupportRepository {
                     order("created_at", Order.ASCENDING)
                     limit(limit.toLong())
                 }
-                .decodeList<SupportMessage>()
+                .decodeList<JsonObject>()
+                .map { messageJson ->
+                    SupportMessage(
+                        id = messageJson["id"]?.jsonPrimitive?.contentOrNull ?: "",
+                        conversationId = messageJson["conversation_id"]?.jsonPrimitive?.contentOrNull ?: "",
+                        senderId = messageJson["sender_id"]?.jsonPrimitive?.contentOrNull ?: "",
+                        messageText = messageJson["message_text"]?.jsonPrimitive?.contentOrNull ?: "",
+                        messageType = messageJson["message_type"]?.jsonPrimitive?.contentOrNull ?: "text",
+                        isFromSupport = messageJson["is_from_support"]?.jsonPrimitive?.content?.toBoolean() ?: false,
+                        readAt = messageJson["read_at"]?.jsonPrimitive?.contentOrNull,
+                        createdAt = messageJson["created_at"]?.jsonPrimitive?.contentOrNull ?: ""
+                    )
+                }
             
             Log.d(TAG, "获取到 ${messages.size} 条消息")
             return@withContext messages
@@ -181,9 +245,15 @@ class SupportRepository {
     /**
      * 订阅对话的实时消息
      */
-    suspend fun subscribeToConversationMessages(conversationId: String) {
+    suspend fun subscribeToConversationMessages(
+        conversationId: String,
+        onMessagesUpdate: (List<SupportMessage>) -> Unit
+    ) {
         try {
             Log.d(TAG, "订阅对话实时消息: $conversationId")
+
+            // 保存回调函数
+            onMessagesUpdated = onMessagesUpdate
 
             // 取消之前的订阅
             messageChannel?.let { channel ->
@@ -208,14 +278,8 @@ class SupportRepository {
                         val messages = getConversationMessages(conversationId, 50)
                         if (messages.size > lastMessageCount) {
                             Log.d(TAG, "检测到新消息: ${messages.size - lastMessageCount} 条")
-                            // 更新UI状态
-                            val currentState = _supportUiState.value
-                            _supportUiState.value = currentState.copy(
-                                conversationState = currentState.conversationState.copy(
-                                    messages = messages,
-                                    unreadCount = messages.count { it.isFromSupport && !it.isRead() }
-                                )
-                            )
+                            // 通过回调更新UI状态
+                            onMessagesUpdate(messages)
                             lastMessageCount = messages.size
                         }
                         kotlinx.coroutines.delay(3000) // 每3秒检查一次
@@ -284,13 +348,13 @@ class SupportRepository {
     suspend fun getUserFeedbackList(): List<UserFeedback> = withContext(Dispatchers.IO) {
         try {
             Log.d(TAG, "获取用户反馈列表")
-            
+
             val currentUser = client.auth.currentUserOrNull()
             if (currentUser == null) {
                 Log.w(TAG, "用户未登录")
                 return@withContext emptyList()
             }
-            
+
             val feedbackList = client.from("user_feedback")
                 .select(columns = Columns.list(
                     "id", "user_id", "feedback_type", "title", "description",
@@ -302,7 +366,29 @@ class SupportRepository {
                     }
                     order("created_at", Order.DESCENDING)
                 }
-                .decodeList<UserFeedback>()
+                .decodeList<JsonObject>()
+                .map { feedbackJson ->
+                    UserFeedback(
+                        id = feedbackJson["id"]?.jsonPrimitive?.contentOrNull ?: "",
+                        userId = feedbackJson["user_id"]?.jsonPrimitive?.contentOrNull ?: "",
+                        feedbackType = feedbackJson["feedback_type"]?.jsonPrimitive?.contentOrNull ?: "general",
+                        title = feedbackJson["title"]?.jsonPrimitive?.contentOrNull ?: "",
+                        description = feedbackJson["description"]?.jsonPrimitive?.contentOrNull ?: "",
+                        status = feedbackJson["status"]?.jsonPrimitive?.contentOrNull ?: "submitted",
+                        priority = feedbackJson["priority"]?.jsonPrimitive?.contentOrNull ?: "normal",
+                        adminResponse = feedbackJson["admin_response"]?.jsonPrimitive?.contentOrNull,
+                        adminId = feedbackJson["admin_id"]?.jsonPrimitive?.contentOrNull,
+                        deviceInfo = try {
+                            feedbackJson["device_info"]?.jsonObject
+                        } catch (e: Exception) {
+                            null
+                        },
+                        appVersion = feedbackJson["app_version"]?.jsonPrimitive?.contentOrNull,
+                        createdAt = feedbackJson["created_at"]?.jsonPrimitive?.contentOrNull ?: "",
+                        updatedAt = feedbackJson["updated_at"]?.jsonPrimitive?.contentOrNull ?: "",
+                        resolvedAt = feedbackJson["resolved_at"]?.jsonPrimitive?.contentOrNull
+                    )
+                }
             
             Log.d(TAG, "获取到 ${feedbackList.size} 条反馈")
             return@withContext feedbackList
@@ -337,13 +423,7 @@ class SupportRepository {
                 }
             }
             
-            // 更新UI状态中的未读计数
-            val currentState = _supportUiState.value
-            _supportUiState.value = currentState.copy(
-                conversationState = currentState.conversationState.copy(
-                    unreadCount = 0
-                )
-            )
+            // 标记消息为已读成功，不需要在Repository中更新UI状态
             
             Log.d(TAG, "消息标记为已读成功")
             return@withContext true
@@ -459,20 +539,25 @@ class SupportRepository {
                 return@withContext false
             }
 
-            // 调用数据库函数检查权限
-            val result = client.functions.invoke(
-                function = "support-management",
-                body = buildJsonObject {
-                    put("action", "check_permission")
-                    put("permission", permission)
+            // 简化权限检查，直接基于用户角色判断
+            val userRoles = getUserRoles()
+            val hasPermission = when (permission) {
+                "support.view_all_conversations" -> {
+                    userRoles.any { it in listOf("support", "admin", "super_admin") }
                 }
-            )
+                "support.create_private_conversations" -> {
+                    userRoles.any { it in listOf("support", "admin", "super_admin") }
+                }
+                "admin.manage_users" -> {
+                    userRoles.any { it in listOf("admin", "super_admin") }
+                }
+                "admin.manage_feedback" -> {
+                    userRoles.any { it in listOf("admin", "super_admin") }
+                }
+                else -> false
+            }
 
-            val responseText = result.bodyAsText()
-            val responseJson = Json.parseToJsonElement(responseText).jsonObject
-            val hasPermission = responseJson["has_permission"]?.jsonPrimitive?.contentOrNull?.toBoolean() ?: false
-
-            Log.d(TAG, "权限检查结果 [$permission]: $hasPermission")
+            Log.d(TAG, "权限检查结果 [$permission]: $hasPermission (基于角色: $userRoles)")
             return@withContext hasPermission
 
         } catch (e: Exception) {
@@ -497,7 +582,21 @@ class SupportRepository {
                     order("last_message_at", Order.DESCENDING)
                     limit(limit.toLong())
                 }
-                .decodeList<SupportConversation>()
+                .decodeList<JsonObject>()
+                .map { conversationJson ->
+                    SupportConversation(
+                        id = conversationJson["id"]?.jsonPrimitive?.contentOrNull ?: "",
+                        userId = conversationJson["user_id"]?.jsonPrimitive?.contentOrNull ?: "",
+                        supportId = conversationJson["support_id"]?.jsonPrimitive?.contentOrNull,
+                        conversationTitle = conversationJson["conversation_title"]?.jsonPrimitive?.contentOrNull ?: "",
+                        status = conversationJson["status"]?.jsonPrimitive?.contentOrNull ?: "active",
+                        priority = conversationJson["priority"]?.jsonPrimitive?.contentOrNull ?: "normal",
+                        createdAt = conversationJson["created_at"]?.jsonPrimitive?.contentOrNull ?: "",
+                        updatedAt = conversationJson["updated_at"]?.jsonPrimitive?.contentOrNull ?: "",
+                        closedAt = conversationJson["closed_at"]?.jsonPrimitive?.contentOrNull,
+                        lastMessageAt = conversationJson["last_message_at"]?.jsonPrimitive?.contentOrNull ?: ""
+                    )
+                }
 
             Log.d(TAG, "获取到 ${conversations.size} 个对话")
             return@withContext conversations
@@ -531,7 +630,21 @@ class SupportRepository {
                     }
                     order("last_message_at", Order.DESCENDING)
                 }
-                .decodeList<SupportConversation>()
+                .decodeList<JsonObject>()
+                .map { conversationJson ->
+                    SupportConversation(
+                        id = conversationJson["id"]?.jsonPrimitive?.contentOrNull ?: "",
+                        userId = conversationJson["user_id"]?.jsonPrimitive?.contentOrNull ?: "",
+                        supportId = conversationJson["support_id"]?.jsonPrimitive?.contentOrNull,
+                        conversationTitle = conversationJson["conversation_title"]?.jsonPrimitive?.contentOrNull ?: "客服对话",
+                        status = conversationJson["status"]?.jsonPrimitive?.contentOrNull ?: "open",
+                        priority = conversationJson["priority"]?.jsonPrimitive?.contentOrNull ?: "normal",
+                        createdAt = conversationJson["created_at"]?.jsonPrimitive?.contentOrNull ?: "",
+                        updatedAt = conversationJson["updated_at"]?.jsonPrimitive?.contentOrNull ?: "",
+                        closedAt = conversationJson["closed_at"]?.jsonPrimitive?.contentOrNull,
+                        lastMessageAt = conversationJson["last_message_at"]?.jsonPrimitive?.contentOrNull ?: ""
+                    )
+                }
 
             Log.d(TAG, "获取到 ${conversations.size} 个用户对话")
             return@withContext conversations
@@ -679,7 +792,8 @@ class SupportRepository {
             val feedbacks = client.from("user_feedback")
                 .select(columns = Columns.list(
                     "id", "user_id", "feedback_type", "title", "description",
-                    "priority", "status", "admin_response", "created_at", "updated_at"
+                    "priority", "status", "admin_response", "admin_id", "device_info",
+                    "app_version", "created_at", "updated_at", "resolved_at"
                 )) {
                     filter {
                         eq("user_id", currentUser.id)
@@ -687,7 +801,29 @@ class SupportRepository {
                     order("created_at", Order.DESCENDING)
                     limit(limit.toLong())
                 }
-                .decodeList<UserFeedback>()
+                .decodeList<JsonObject>()
+                .map { feedbackJson ->
+                    UserFeedback(
+                        id = feedbackJson["id"]?.jsonPrimitive?.contentOrNull ?: "",
+                        userId = feedbackJson["user_id"]?.jsonPrimitive?.contentOrNull ?: "",
+                        feedbackType = feedbackJson["feedback_type"]?.jsonPrimitive?.contentOrNull ?: "general",
+                        title = feedbackJson["title"]?.jsonPrimitive?.contentOrNull ?: "",
+                        description = feedbackJson["description"]?.jsonPrimitive?.contentOrNull ?: "",
+                        status = feedbackJson["status"]?.jsonPrimitive?.contentOrNull ?: "submitted",
+                        priority = feedbackJson["priority"]?.jsonPrimitive?.contentOrNull ?: "normal",
+                        adminResponse = feedbackJson["admin_response"]?.jsonPrimitive?.contentOrNull,
+                        adminId = feedbackJson["admin_id"]?.jsonPrimitive?.contentOrNull,
+                        deviceInfo = try {
+                            feedbackJson["device_info"]?.jsonObject
+                        } catch (e: Exception) {
+                            null
+                        },
+                        appVersion = feedbackJson["app_version"]?.jsonPrimitive?.contentOrNull,
+                        createdAt = feedbackJson["created_at"]?.jsonPrimitive?.contentOrNull ?: "",
+                        updatedAt = feedbackJson["updated_at"]?.jsonPrimitive?.contentOrNull ?: "",
+                        resolvedAt = feedbackJson["resolved_at"]?.jsonPrimitive?.contentOrNull
+                    )
+                }
 
             Log.d(TAG, "获取到 ${feedbacks.size} 个用户反馈")
             return@withContext feedbacks
@@ -1148,20 +1284,38 @@ class SupportRepository {
                 return@withContext false
             }
 
+            // 先查询反馈是否存在且属于当前用户
+            val existingFeedback = client.from("user_feedback")
+                .select {
+                    filter {
+                        eq("id", feedbackId)
+                        eq("user_id", currentUser.id)
+                    }
+                }
+                .decodeSingle<JsonObject>()
+
+            Log.d(TAG, "查询到反馈: ${existingFeedback["status"]?.jsonPrimitive?.content}")
+
+            // 检查反馈状态是否允许撤销（只能撤销submitted和reviewing状态的反馈）
+            val currentStatus = existingFeedback["status"]?.jsonPrimitive?.content
+            if (currentStatus != "submitted" && currentStatus != "reviewing") {
+                Log.w(TAG, "反馈状态为 $currentStatus，无法撤销")
+                return@withContext false
+            }
+
             // 更新反馈状态为已撤销
-            client.from("user_feedback")
+            val updateResult = client.from("user_feedback")
                 .update(buildJsonObject {
                     put("status", "withdrawn")
                     put("updated_at", java.time.LocalDateTime.now().toString())
                 }) {
                     filter {
                         eq("id", feedbackId)
-                        eq("user_id", currentUser.id) // 确保只能撤销自己的反馈
-                        eq("status", "submitted") // 只能撤销未处理的反馈
+                        eq("user_id", currentUser.id)
                     }
                 }
 
-            Log.d(TAG, "反馈撤销成功")
+            Log.d(TAG, "反馈撤销操作完成，结果: $updateResult")
             return@withContext true
         } catch (e: Exception) {
             Log.e(TAG, "撤销反馈失败", e)
@@ -1183,8 +1337,20 @@ class SupportRepository {
                 return@withContext false
             }
 
+            // 先查询反馈是否存在且属于当前用户
+            val existingFeedback = client.from("user_feedback")
+                .select {
+                    filter {
+                        eq("id", feedbackId)
+                        eq("user_id", currentUser.id)
+                    }
+                }
+                .decodeSingle<JsonObject>()
+
+            Log.d(TAG, "查询到要删除的反馈: ${existingFeedback["title"]?.jsonPrimitive?.content}")
+
             // 从数据库删除反馈
-            client.from("user_feedback")
+            val deleteResult = client.from("user_feedback")
                 .delete {
                     filter {
                         eq("id", feedbackId)
@@ -1192,7 +1358,7 @@ class SupportRepository {
                     }
                 }
 
-            Log.d(TAG, "反馈删除成功")
+            Log.d(TAG, "反馈删除操作完成，结果: $deleteResult")
             return@withContext true
         } catch (e: Exception) {
             Log.e(TAG, "删除反馈失败", e)

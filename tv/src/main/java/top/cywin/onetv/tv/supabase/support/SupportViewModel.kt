@@ -38,14 +38,7 @@ class SupportViewModel(application: Application) : AndroidViewModel(application)
     private val _currentConversationId = MutableStateFlow<String?>(null)
     val currentConversationId: StateFlow<String?> = _currentConversationId.asStateFlow()
     
-    init {
-        // 监听仓库状态变化
-        viewModelScope.launch {
-            supportRepository.supportUiState.collect { repositoryState ->
-                _uiState.value = repositoryState
-            }
-        }
-    }
+    // 移除了Repository状态监听，现在完全由ViewModel管理状态
     
     /**
      * 开始客服对话
@@ -53,37 +46,74 @@ class SupportViewModel(application: Application) : AndroidViewModel(application)
     fun startSupportConversation() {
         viewModelScope.launch {
             try {
-                Log.d(TAG, "开始客服对话")
-                
+                Log.d(TAG, "=== 开始客服对话流程 ===")
+
                 // 检查用户登录状态
                 val currentUser = SupabaseClient.client.auth.currentUserOrNull()
+                Log.d(TAG, "用户登录状态检查: ${if (currentUser != null) "已登录 - ${currentUser.id}" else "未登录"}")
+
                 if (currentUser == null) {
+                    Log.w(TAG, "用户未登录，无法启动客服对话")
                     _uiState.value = _uiState.value.copy(
                         conversationState = _uiState.value.conversationState.copy(
+                            isLoading = false,
+                            isConnected = false,
                             error = "请先登录后再使用客服功能"
                         )
                     )
                     return@launch
                 }
-                
+
+                Log.d(TAG, "设置UI状态为加载中...")
                 _uiState.value = _uiState.value.copy(
-                    conversationState = _uiState.value.conversationState.copy(isLoading = true)
+                    conversationState = _uiState.value.conversationState.copy(
+                        isLoading = true,
+                        isConnected = false,
+                        error = null
+                    )
                 )
-                
+
                 // 获取或创建活跃对话
+                Log.d(TAG, "开始获取或创建活跃对话...")
                 val conversation = supportRepository.getOrCreateActiveConversation()
+                Log.d(TAG, "对话获取结果: ${if (conversation != null) "成功 - ID: ${conversation.id}, 状态: ${conversation.status}, 标题: ${conversation.conversationTitle}" else "失败 - 返回null"}")
+
                 if (conversation != null) {
+                    Log.d(TAG, "对话获取成功，设置当前对话ID: ${conversation.id}")
                     _currentConversationId.value = conversation.id
-                    
+
                     // 加载对话消息
+                    Log.d(TAG, "开始加载对话消息...")
                     val messages = supportRepository.getConversationMessages(conversation.id)
-                    
+                    Log.d(TAG, "消息加载结果: ${messages.size} 条消息")
+
                     // 订阅实时消息
-                    supportRepository.subscribeToConversationMessages(conversation.id)
-                    
+                    Log.d(TAG, "开始订阅实时消息...")
+                    try {
+                        supportRepository.subscribeToConversationMessages(conversation.id) { updatedMessages ->
+                            Log.d(TAG, "收到实时消息更新: ${updatedMessages.size} 条消息")
+                            // 更新UI状态中的消息列表
+                            _uiState.value = _uiState.value.copy(
+                                conversationState = _uiState.value.conversationState.copy(
+                                    messages = updatedMessages
+                                )
+                            )
+                        }
+                        Log.d(TAG, "实时消息订阅成功")
+                    } catch (e: Exception) {
+                        Log.e(TAG, "实时消息订阅失败", e)
+                    }
+
                     // 标记消息为已读
-                    supportRepository.markMessagesAsRead(conversation.id)
-                    
+                    Log.d(TAG, "标记消息为已读...")
+                    try {
+                        supportRepository.markMessagesAsRead(conversation.id)
+                        Log.d(TAG, "消息标记为已读成功")
+                    } catch (e: Exception) {
+                        Log.e(TAG, "标记消息为已读失败", e)
+                    }
+
+                    Log.d(TAG, "更新UI状态为连接成功...")
                     _uiState.value = _uiState.value.copy(
                         conversationState = SupportConversationState(
                             conversation = conversation,
@@ -94,21 +124,28 @@ class SupportViewModel(application: Application) : AndroidViewModel(application)
                         ),
                         showConversation = true
                     )
-                    
-                    Log.d(TAG, "客服对话启动成功，加载了 ${messages.size} 条历史消息")
+
+                    Log.d(TAG, "=== 客服对话启动成功 ===")
+                    Log.d(TAG, "对话详情: ID=${conversation.id}, 状态=${conversation.status}, 消息数=${messages.size}")
+                    Log.d(TAG, "UI状态: isConnected=true, isLoading=false, showConversation=true")
                 } else {
+                    Log.e(TAG, "对话获取失败，无法启动客服对话")
                     _uiState.value = _uiState.value.copy(
                         conversationState = _uiState.value.conversationState.copy(
                             isLoading = false,
-                            error = "启动客服对话失败"
+                            isConnected = false,
+                            error = "启动客服对话失败：无法创建或获取对话"
                         )
                     )
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "启动客服对话失败", e)
+                Log.e(TAG, "=== 启动客服对话异常 ===", e)
+                Log.e(TAG, "异常详情: ${e.message}")
+                Log.e(TAG, "异常类型: ${e.javaClass.simpleName}")
                 _uiState.value = _uiState.value.copy(
                     conversationState = _uiState.value.conversationState.copy(
                         isLoading = false,
+                        isConnected = false,
                         error = "启动客服对话失败: ${e.message}"
                     )
                 )
@@ -205,15 +242,19 @@ class SupportViewModel(application: Application) : AndroidViewModel(application)
                 if (success) {
                     // 重新加载反馈列表
                     loadUserFeedbackList()
-                    
+
                     _uiState.value = _uiState.value.copy(
                         feedbackState = _uiState.value.feedbackState.copy(
                             isLoading = false,
-                            error = null
+                            error = null,
+                            successMessage = "反馈提交成功！感谢您的反馈。"
                         ),
                         showFeedbackForm = false
                     )
-                    
+
+                    // 显示成功消息
+                    showUserMessage("反馈提交成功！")
+
                     Log.d(TAG, "用户反馈提交成功")
                 } else {
                     _uiState.value = _uiState.value.copy(
@@ -250,7 +291,7 @@ class SupportViewModel(application: Application) : AndroidViewModel(application)
                 val feedbackList = supportRepository.getUserFeedbackList()
                 
                 _uiState.value = _uiState.value.copy(
-                    feedbackState = UserFeedbackState(
+                    feedbackState = _uiState.value.feedbackState.copy(
                         feedbackList = feedbackList,
                         isLoading = false,
                         error = null
@@ -339,18 +380,40 @@ class SupportViewModel(application: Application) : AndroidViewModel(application)
     fun withdrawFeedback(feedbackId: String) {
         viewModelScope.launch {
             try {
-                Log.d(TAG, "撤销反馈: $feedbackId")
+                Log.d(TAG, "开始撤销反馈: $feedbackId")
+
+                // 显示加载状态
+                _uiState.value = _uiState.value.copy(
+                    feedbackState = _uiState.value.feedbackState.copy(isLoading = true)
+                )
+
                 val success = supportRepository.withdrawFeedback(feedbackId)
                 if (success) {
+                    Log.d(TAG, "反馈撤销成功")
                     showUserMessage("反馈已撤销", UserMessageType.SUCCESS)
+
+                    // 关闭详情弹窗
+                    hideFeedbackDetail()
+
                     // 重新加载反馈列表
                     loadUserFeedbackList()
                 } else {
-                    showUserMessage("撤销反馈失败", UserMessageType.ERROR)
+                    Log.w(TAG, "反馈撤销失败")
+                    showUserMessage("撤销反馈失败，可能反馈已被处理", UserMessageType.ERROR)
+
+                    // 停止加载状态
+                    _uiState.value = _uiState.value.copy(
+                        feedbackState = _uiState.value.feedbackState.copy(isLoading = false)
+                    )
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "撤销反馈失败", e)
+                Log.e(TAG, "撤销反馈异常", e)
                 showUserMessage("撤销反馈失败: ${e.message}", UserMessageType.ERROR)
+
+                // 停止加载状态
+                _uiState.value = _uiState.value.copy(
+                    feedbackState = _uiState.value.feedbackState.copy(isLoading = false)
+                )
             }
         }
     }
@@ -361,18 +424,47 @@ class SupportViewModel(application: Application) : AndroidViewModel(application)
     fun deleteFeedback(feedbackId: String) {
         viewModelScope.launch {
             try {
-                Log.d(TAG, "删除反馈: $feedbackId")
+                Log.d(TAG, "开始删除反馈: $feedbackId")
+
+                // 显示加载状态
+                _uiState.value = _uiState.value.copy(
+                    feedbackState = _uiState.value.feedbackState.copy(isLoading = true)
+                )
+
                 val success = supportRepository.deleteFeedback(feedbackId)
                 if (success) {
+                    Log.d(TAG, "反馈删除成功")
                     showUserMessage("反馈已删除", UserMessageType.SUCCESS)
-                    // 重新加载反馈列表
+
+                    // 关闭详情弹窗
+                    hideFeedbackDetail()
+
+                    // 重新加载反馈列表（用于FeedbackListScreen）
                     loadUserFeedbackList()
+
+                    // 触发反馈数据刷新，通知所有相关组件更新
+                    _uiState.value = _uiState.value.copy(
+                        feedbackRefreshTrigger = System.currentTimeMillis()
+                    )
+
+                    Log.d(TAG, "反馈删除后刷新所有相关UI数据")
                 } else {
+                    Log.w(TAG, "反馈删除失败")
                     showUserMessage("删除反馈失败", UserMessageType.ERROR)
+
+                    // 停止加载状态
+                    _uiState.value = _uiState.value.copy(
+                        feedbackState = _uiState.value.feedbackState.copy(isLoading = false)
+                    )
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "删除反馈失败", e)
+                Log.e(TAG, "删除反馈异常", e)
                 showUserMessage("删除反馈失败: ${e.message}", UserMessageType.ERROR)
+
+                // 停止加载状态
+                _uiState.value = _uiState.value.copy(
+                    feedbackState = _uiState.value.feedbackState.copy(isLoading = false)
+                )
             }
         }
     }

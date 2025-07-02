@@ -107,6 +107,7 @@ fun FeedbackFormScreen(
             // 优先级选择
             Text(
                 text = "优先级",
+                color = Color(0xFFFFD700),
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Bold
             )
@@ -136,6 +137,7 @@ fun FeedbackFormScreen(
                     Text("请简要描述问题", color = Color.Gray)
                 },
                 colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = Color.White,
                     unfocusedTextColor = Color.White,
                     focusedBorderColor = Color(0xFFFFD700),
                     unfocusedBorderColor = Color.Gray
@@ -166,6 +168,7 @@ fun FeedbackFormScreen(
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedTextColor = Color.White,
                     unfocusedTextColor = Color.White,
+                    focusedBorderColor = Color(0xFFFFD700),
                     unfocusedBorderColor = Color.Gray
                 ),
                 maxLines = 5
