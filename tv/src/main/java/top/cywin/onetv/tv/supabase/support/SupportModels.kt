@@ -206,6 +206,18 @@ data class UserFeedback(
             else -> "未知状态"
         }
     }
+
+    /**
+     * 获取格式化的创建时间
+     */
+    fun getFormattedCreatedTime(): String {
+        return try {
+            val dateTime = LocalDateTime.parse(createdAt.replace("Z", ""))
+            dateTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
+        } catch (e: Exception) {
+            "未知时间"
+        }
+    }
     
     /**
      * 获取优先级显示文本
@@ -216,18 +228,6 @@ data class UserFeedback(
             PRIORITY_NORMAL -> "普通"
             PRIORITY_HIGH -> "高"
             else -> "普通"
-        }
-    }
-    
-    /**
-     * 获取格式化的创建时间
-     */
-    fun getFormattedCreatedTime(): String {
-        return try {
-            val dateTime = LocalDateTime.parse(createdAt.replace("Z", ""))
-            dateTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
-        } catch (e: Exception) {
-            "未知时间"
         }
     }
 
@@ -342,6 +342,8 @@ data class SupportUiState(
     val showConversation: Boolean = false,
     val showFeedbackForm: Boolean = false,
     val showFeedbackList: Boolean = false,
+    val showFeedbackDetail: Boolean = false,
+    val selectedFeedback: UserFeedback? = null,
     val showRoleManagement: Boolean = false,
     val showUserManagement: Boolean = false,
     val showFeedbackManagement: Boolean = false,

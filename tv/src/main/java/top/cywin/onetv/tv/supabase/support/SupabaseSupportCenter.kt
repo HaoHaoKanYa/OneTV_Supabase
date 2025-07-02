@@ -459,42 +459,144 @@ private fun SupportContentPanel(
         when (selectedMenuItem) {
             "user_info" -> UserInfoContent(userData, supportViewModel)
             "chat" -> {
-                if (uiState.showConversation) {
-                    SupportConversationScreen(
-                        viewModel = supportViewModel,
-                        onClose = { supportViewModel.hideConversation() }
-                    )
-                } else {
+                Box(modifier = Modifier.fillMaxSize()) {
+                    // 主内容区域
                     ChatStartContent(
-                        onStartChat = { supportViewModel.startSupportConversation() },
+                        onStartChat = { supportViewModel.showConversation() },
                         supportViewModel = supportViewModel
                     )
+
+                    // 聊天窗口弹窗 - 居中显示，占据2/3屏幕
+                    if (uiState.showConversation) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color.Black.copy(alpha = 0.7f))
+                                .clickable { /* 防止点击穿透 */ },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth(0.67f)
+                                    .fillMaxHeight(0.67f),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = Color(0xFF1A1A1A)
+                                ),
+                                shape = RoundedCornerShape(16.dp)
+                            ) {
+                                SupportConversationScreen(
+                                    viewModel = supportViewModel,
+                                    onClose = { supportViewModel.hideConversation() }
+                                )
+                            }
+                        }
+                    }
                 }
             }
             "submit_feedback" -> {
-                if (uiState.showFeedbackForm) {
-                    FeedbackFormScreen(
-                        viewModel = supportViewModel,
-                        onClose = { supportViewModel.hideFeedbackForm() }
-                    )
-                } else {
+                Box(modifier = Modifier.fillMaxSize()) {
+                    // 主内容区域 - 论坛版块模式
                     FeedbackStartContent(
                         onStartFeedback = { supportViewModel.showFeedbackForm() },
                         supportViewModel = supportViewModel
                     )
+
+                    // 反馈表单弹窗 - 居中显示，占据2/3屏幕
+                    if (uiState.showFeedbackForm) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color.Black.copy(alpha = 0.7f))
+                                .clickable { /* 防止点击穿透 */ },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth(0.67f)
+                                    .fillMaxHeight(0.67f),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = Color(0xFF1A1A1A)
+                                ),
+                                shape = RoundedCornerShape(16.dp)
+                            ) {
+                                FeedbackFormScreen(
+                                    viewModel = supportViewModel,
+                                    onClose = { supportViewModel.hideFeedbackForm() }
+                                )
+                            }
+                        }
+                    }
                 }
             }
             "my_feedback" -> {
-                if (uiState.showFeedbackList) {
-                    FeedbackListScreen(
-                        viewModel = supportViewModel,
-                        onClose = { supportViewModel.hideFeedbackList() }
-                    )
-                } else {
+                Box(modifier = Modifier.fillMaxSize()) {
+                    // 主内容区域 - 论坛版块模式
                     MyFeedbackContent(
                         onViewFeedback = { supportViewModel.showFeedbackList() },
                         supportViewModel = supportViewModel
                     )
+
+                    // 反馈列表弹窗 - 居中显示，占据2/3屏幕
+                    if (uiState.showFeedbackList) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color.Black.copy(alpha = 0.7f))
+                                .clickable { /* 防止点击穿透 */ },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth(0.67f)
+                                    .fillMaxHeight(0.67f),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = Color(0xFF1A1A1A)
+                                ),
+                                shape = RoundedCornerShape(16.dp)
+                            ) {
+                                FeedbackListScreen(
+                                    viewModel = supportViewModel,
+                                    onClose = { supportViewModel.hideFeedbackList() }
+                                )
+                            }
+                        }
+                    }
+
+                    // 反馈详情弹窗 - 居中显示，占据2/3屏幕
+                    if (uiState.showFeedbackDetail && uiState.selectedFeedback != null) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color.Black.copy(alpha = 0.7f))
+                                .clickable { /* 防止点击穿透 */ },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth(0.67f)
+                                    .fillMaxHeight(0.67f),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = Color(0xFF1A1A1A)
+                                ),
+                                shape = RoundedCornerShape(16.dp)
+                            ) {
+                                FeedbackDetailDialog(
+                                    feedback = uiState.selectedFeedback!!,
+                                    onClose = { supportViewModel.hideFeedbackDetail() },
+                                    onWithdraw = { feedbackId ->
+                                        // 撤销反馈逻辑
+                                        supportViewModel.withdrawFeedback(feedbackId)
+                                        supportViewModel.hideFeedbackDetail()
+                                    },
+                                    onDelete = { feedbackId ->
+                                        // 删除反馈逻辑
+                                        supportViewModel.deleteFeedback(feedbackId)
+                                        supportViewModel.hideFeedbackDetail()
+                                    }
+                                )
+                            }
+                        }
+                    }
                 }
             }
             "user_management" -> {
@@ -787,7 +889,7 @@ private fun ChatStartContent(
                             )
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
-                                text = "开始您的第一次客服对话",
+                                text = "点击下方按钮开始您的第一次客服对话",
                                 color = Color.Gray,
                                 fontSize = 14.sp
                             )
@@ -806,7 +908,7 @@ private fun ChatStartContent(
             }
         }
 
-        // 底部操作区域 - 类似微信输入框
+        // 底部操作区域 - 移动到最下端
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -860,23 +962,24 @@ private fun ChatStartContent(
 }
 
 /**
- * 统计项组件
+ * 统计项组件 - 横向布局，数据显示在标签右侧
  */
 @Composable
 private fun StatItem(label: String, value: Int) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Text(
-            text = value.toString(),
-            color = Color(0xFFFFD700),
-            fontSize = 20.sp,
-            fontWeight = FontWeight.Bold
-        )
         Text(
             text = label,
             color = Color.White.copy(alpha = 0.7f),
-            fontSize = 12.sp
+            fontSize = 14.sp
+        )
+        Text(
+            text = value.toString(),
+            color = Color(0xFFFFD700),
+            fontSize = 18.sp,
+            fontWeight = FontWeight.Bold
         )
     }
 }
@@ -988,11 +1091,69 @@ private fun FeedbackStartContent(
             }
         }
 
-        // 操作按钮区域
+        // 反馈帖子列表区域 - 论坛样式
+        LazyColumn(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .background(
+                    color = Color(0xFF1A1A1A).copy(alpha = 0.3f),
+                    shape = RoundedCornerShape(12.dp)
+                )
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            if (isLoading) {
+                item {
+                    Box(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(
+                            color = Color(0xFFFFD700)
+                        )
+                    }
+                }
+            } else if (recentFeedbacks.isEmpty()) {
+                item {
+                    Box(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                text = "暂无反馈记录",
+                                color = Color.Gray,
+                                fontSize = 16.sp
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "点击下方按钮提交您的第一个反馈",
+                                color = Color.Gray,
+                                fontSize = 14.sp
+                            )
+                        }
+                    }
+                }
+            } else {
+                items(recentFeedbacks) { feedback ->
+                    FeedbackForumItem(
+                        feedback = feedback,
+                        onClick = {
+                            // 这里可以添加查看反馈详情的逻辑
+                        }
+                    )
+                }
+            }
+        }
+
+        // 操作按钮区域 - 移动到最下端
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 16.dp),
+                .padding(top = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             // 我要反馈按钮
@@ -1035,64 +1196,6 @@ private fun FeedbackStartContent(
                     color = Color.White,
                     fontSize = 16.sp
                 )
-            }
-        }
-
-        // 反馈帖子列表区域 - 论坛样式
-        LazyColumn(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .background(
-                    color = Color(0xFF1A1A1A).copy(alpha = 0.3f),
-                    shape = RoundedCornerShape(12.dp)
-                )
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            if (isLoading) {
-                item {
-                    Box(
-                        modifier = Modifier.fillMaxWidth(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        CircularProgressIndicator(
-                            color = Color(0xFFFFD700)
-                        )
-                    }
-                }
-            } else if (recentFeedbacks.isEmpty()) {
-                item {
-                    Box(
-                        modifier = Modifier.fillMaxWidth(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Text(
-                                text = "暂无反馈记录",
-                                color = Color.Gray,
-                                fontSize = 16.sp
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = "点击上方按钮提交您的第一个反馈",
-                                color = Color.Gray,
-                                fontSize = 14.sp
-                            )
-                        }
-                    }
-                }
-            } else {
-                items(recentFeedbacks) { feedback ->
-                    FeedbackForumItem(
-                        feedback = feedback,
-                        onClick = {
-                            // 这里可以添加查看反馈详情的逻辑
-                        }
-                    )
-                }
             }
         }
     }
@@ -1352,56 +1455,6 @@ private fun MyFeedbackContent(
             }
         }
 
-        // 操作按钮区域
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            // 查看全部按钮
-            Button(
-                onClick = onViewFeedback,
-                modifier = Modifier
-                    .weight(1f)
-                    .height(48.dp),
-                shape = RoundedCornerShape(24.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFFFFD700)
-                )
-            ) {
-                Text(
-                    text = "📋 查看全部反馈",
-                    color = Color.Black,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-
-            // 刷新按钮
-            Button(
-                onClick = {
-                    supportViewModel.getFeedbackStats { stats ->
-                        feedbackStats = stats
-                    }
-                    supportViewModel.getUserFeedbacks { feedbacks ->
-                        myFeedbacks = feedbacks
-                    }
-                },
-                modifier = Modifier.height(48.dp),
-                shape = RoundedCornerShape(24.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF4285F4).copy(alpha = 0.8f)
-                )
-            ) {
-                Text(
-                    text = "🔄",
-                    color = Color.White,
-                    fontSize = 16.sp
-                )
-            }
-        }
-
         // 我的反馈帖子列表区域 - 论坛样式
         LazyColumn(
             modifier = Modifier
@@ -1453,10 +1506,61 @@ private fun MyFeedbackContent(
                     MyFeedbackForumItem(
                         feedback = feedback,
                         onClick = {
-                            // 点击帖子可进行操作（查看详情、撤销、删除等）
+                            // 点击帖子显示详情弹窗
+                            supportViewModel.showFeedbackDetail(feedback)
                         }
                     )
                 }
+            }
+        }
+
+        // 操作按钮区域 - 移动到最下端
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            // 查看全部按钮
+            Button(
+                onClick = onViewFeedback,
+                modifier = Modifier
+                    .weight(1f)
+                    .height(48.dp),
+                shape = RoundedCornerShape(24.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFFFFD700)
+                )
+            ) {
+                Text(
+                    text = "📋 查看全部反馈",
+                    color = Color.Black,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+
+            // 刷新按钮
+            Button(
+                onClick = {
+                    supportViewModel.getFeedbackStats { stats ->
+                        feedbackStats = stats
+                    }
+                    supportViewModel.getUserFeedbacks { feedbacks ->
+                        myFeedbacks = feedbacks
+                    }
+                },
+                modifier = Modifier.height(48.dp),
+                shape = RoundedCornerShape(24.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF4285F4).copy(alpha = 0.8f)
+                )
+            ) {
+                Text(
+                    text = "🔄",
+                    color = Color.White,
+                    fontSize = 16.sp
+                )
             }
         }
     }
@@ -3193,11 +3297,202 @@ private fun UserMessageToast(
     }
 }
 
+/**
+ * 反馈详情弹窗组件
+ */
+@Composable
+fun FeedbackDetailDialog(
+    feedback: UserFeedback,
+    onClose: () -> Unit,
+    onWithdraw: (String) -> Unit,
+    onDelete: (String) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp)
+    ) {
+        // 标题栏
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "反馈详情",
+                color = Color(0xFFFFD700),
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold
+            )
 
+            Button(
+                onClick = onClose,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color.Red.copy(alpha = 0.7f)
+                )
+            ) {
+                Text("关闭", color = Color.White)
+            }
+        }
 
+        Spacer(modifier = Modifier.height(16.dp))
 
+        // 滚动内容区域
+        LazyColumn(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            item {
+                // 反馈基本信息
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = Color(0xFF2C3E50).copy(alpha = 0.3f)
+                    ),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = feedback.title,
+                            color = Color.White,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold
+                        )
 
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            Text(
+                                text = "类型: ${feedback.getTypeText()}",
+                                color = Color.Gray,
+                                fontSize = 14.sp
+                            )
+                            Text(
+                                text = "状态: ${feedback.getStatusText()}",
+                                color = when (feedback.status) {
+                                    UserFeedback.STATUS_SUBMITTED -> Color(0xFFFFD700)
+                                    UserFeedback.STATUS_REVIEWING -> Color(0xFF2196F3)
+                                    UserFeedback.STATUS_RESOLVED -> Color(0xFF4CAF50)
+                                    else -> Color.Gray
+                                },
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
 
+                        Text(
+                            text = "提交时间: ${feedback.getFormattedCreatedTime()}",
+                            color = Color.Gray,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+            }
 
+            item {
+                // 反馈内容
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = Color(0xFF2C3E50).copy(alpha = 0.3f)
+                    ),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = "反馈内容",
+                            color = Color(0xFFFFD700),
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
 
+                        Text(
+                            text = feedback.description,
+                            color = Color.White,
+                            fontSize = 14.sp,
+                            lineHeight = 20.sp
+                        )
+                    }
+                }
+            }
 
+            // 如果有回复内容，显示回复
+            if (!feedback.adminResponse.isNullOrBlank()) {
+                item {
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = Color(0xFF1B5E20).copy(alpha = 0.3f)
+                        ),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = "管理员回复",
+                                color = Color(0xFF4CAF50),
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+
+                            Text(
+                                text = feedback.adminResponse!!,
+                                color = Color.White,
+                                fontSize = 14.sp,
+                                lineHeight = 20.sp
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // 底部操作按钮
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            // 撤销反馈按钮（仅在未处理状态下显示）
+            if (feedback.status == UserFeedback.STATUS_SUBMITTED) {
+                Button(
+                    onClick = { onWithdraw(feedback.id) },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFFFF9800)
+                    )
+                ) {
+                    Text("撤销反馈", color = Color.White)
+                }
+            }
+
+            // 删除反馈按钮
+            Button(
+                onClick = { onDelete(feedback.id) },
+                modifier = Modifier.weight(1f),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color.Red.copy(alpha = 0.8f)
+                )
+            ) {
+                Text("删除反馈", color = Color.White)
+            }
+
+            // 关闭按钮
+            Button(
+                onClick = onClose,
+                modifier = Modifier.weight(1f),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color.Gray.copy(alpha = 0.8f)
+                )
+            ) {
+                Text("关闭", color = Color.White)
+            }
+        }
+    }
+}

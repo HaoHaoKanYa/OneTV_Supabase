@@ -312,6 +312,70 @@ class SupportViewModel(application: Application) : AndroidViewModel(application)
     fun hideFeedbackList() {
         _uiState.value = _uiState.value.copy(showFeedbackList = false)
     }
+
+    /**
+     * 显示反馈详情
+     */
+    fun showFeedbackDetail(feedback: UserFeedback) {
+        _uiState.value = _uiState.value.copy(
+            showFeedbackDetail = true,
+            selectedFeedback = feedback
+        )
+    }
+
+    /**
+     * 隐藏反馈详情
+     */
+    fun hideFeedbackDetail() {
+        _uiState.value = _uiState.value.copy(
+            showFeedbackDetail = false,
+            selectedFeedback = null
+        )
+    }
+
+    /**
+     * 撤销反馈
+     */
+    fun withdrawFeedback(feedbackId: String) {
+        viewModelScope.launch {
+            try {
+                Log.d(TAG, "撤销反馈: $feedbackId")
+                val success = supportRepository.withdrawFeedback(feedbackId)
+                if (success) {
+                    showUserMessage("反馈已撤销", UserMessageType.SUCCESS)
+                    // 重新加载反馈列表
+                    loadUserFeedbackList()
+                } else {
+                    showUserMessage("撤销反馈失败", UserMessageType.ERROR)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "撤销反馈失败", e)
+                showUserMessage("撤销反馈失败: ${e.message}", UserMessageType.ERROR)
+            }
+        }
+    }
+
+    /**
+     * 删除反馈
+     */
+    fun deleteFeedback(feedbackId: String) {
+        viewModelScope.launch {
+            try {
+                Log.d(TAG, "删除反馈: $feedbackId")
+                val success = supportRepository.deleteFeedback(feedbackId)
+                if (success) {
+                    showUserMessage("反馈已删除", UserMessageType.SUCCESS)
+                    // 重新加载反馈列表
+                    loadUserFeedbackList()
+                } else {
+                    showUserMessage("删除反馈失败", UserMessageType.ERROR)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "删除反馈失败", e)
+                showUserMessage("删除反馈失败: ${e.message}", UserMessageType.ERROR)
+            }
+        }
+    }
     
     /**
      * 关闭当前对话

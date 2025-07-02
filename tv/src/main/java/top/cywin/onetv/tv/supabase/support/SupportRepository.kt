@@ -1135,6 +1135,72 @@ class SupportRepository {
     }
 
     /**
+     * 撤销反馈（用户）
+     */
+    suspend fun withdrawFeedback(feedbackId: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            Log.d(TAG, "撤销反馈: $feedbackId")
+
+            // 获取当前用户信息
+            val currentUser = client.auth.currentUserOrNull()
+            if (currentUser == null) {
+                Log.w(TAG, "用户未登录")
+                return@withContext false
+            }
+
+            // 更新反馈状态为已撤销
+            client.from("user_feedback")
+                .update(buildJsonObject {
+                    put("status", "withdrawn")
+                    put("updated_at", java.time.LocalDateTime.now().toString())
+                }) {
+                    filter {
+                        eq("id", feedbackId)
+                        eq("user_id", currentUser.id) // 确保只能撤销自己的反馈
+                        eq("status", "submitted") // 只能撤销未处理的反馈
+                    }
+                }
+
+            Log.d(TAG, "反馈撤销成功")
+            return@withContext true
+        } catch (e: Exception) {
+            Log.e(TAG, "撤销反馈失败", e)
+            return@withContext false
+        }
+    }
+
+    /**
+     * 删除反馈（用户）
+     */
+    suspend fun deleteFeedback(feedbackId: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            Log.d(TAG, "删除反馈: $feedbackId")
+
+            // 获取当前用户信息
+            val currentUser = client.auth.currentUserOrNull()
+            if (currentUser == null) {
+                Log.w(TAG, "用户未登录")
+                return@withContext false
+            }
+
+            // 从数据库删除反馈
+            client.from("user_feedback")
+                .delete {
+                    filter {
+                        eq("id", feedbackId)
+                        eq("user_id", currentUser.id) // 确保只能删除自己的反馈
+                    }
+                }
+
+            Log.d(TAG, "反馈删除成功")
+            return@withContext true
+        } catch (e: Exception) {
+            Log.e(TAG, "删除反馈失败", e)
+            return@withContext false
+        }
+    }
+
+    /**
      * 获取反馈统计信息（管理员）
      */
     suspend fun getAllFeedbackStats(): Map<String, Int> = withContext(Dispatchers.IO) {
