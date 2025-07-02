@@ -7,14 +7,18 @@ import io.github.jan.supabase.functions.functions
 import io.github.jan.supabase.postgrest.from
 import io.github.jan.supabase.postgrest.query.Columns
 import io.github.jan.supabase.postgrest.query.Order
+import kotlinx.coroutines.Job
+import io.github.jan.supabase.functions.functions
 import io.github.jan.supabase.realtime.PostgresAction
 import io.github.jan.supabase.realtime.channel
-import io.github.jan.supabase.realtime.postgresChangeFlow
 import io.github.jan.supabase.realtime.realtime
-import io.github.jan.supabase.functions.functions
+import io.github.jan.supabase.realtime.RealtimeChannel
+import io.github.jan.supabase.realtime.postgresChangeFlow
+import io.github.jan.supabase.postgrest.query.filter.FilterOperator
+import kotlinx.coroutines.flow.collect
 import io.github.jan.supabase.safeBody
 import kotlinx.coroutines.Dispatchers
-
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -44,16 +48,63 @@ private const val TAG = "SupportRepository"
  * 处理1对1客服对话和用户反馈功能
  */
 class SupportRepository {
-    
+
     private val TAG = "SupportRepository"
     val client = SupabaseClient.client
     private val functions = client.functions
-    
+
+    // 重试配置
+    companion object {
+        private const val MAX_RETRY_ATTEMPTS = 3
+        private const val RETRY_DELAY_MS = 1000L
+    }
+
     // 消息更新回调
     private var onMessagesUpdated: ((List<SupportMessage>) -> Unit)? = null
-    
+
     // 实时订阅通道
-    private var messageChannel: io.github.jan.supabase.realtime.RealtimeChannel? = null
+    private var messageChannel: RealtimeChannel? = null
+
+    /**
+     * 带重试机制的操作执行器
+     * 用于处理网络超时和临时错误
+     */
+    private suspend fun <T> executeWithRetry(
+        operation: String,
+        maxAttempts: Int = MAX_RETRY_ATTEMPTS,
+        block: suspend () -> T
+    ): T {
+        var lastException: Exception? = null
+
+        repeat(maxAttempts) { attempt ->
+            try {
+                Log.d(TAG, "执行操作: $operation (尝试 ${attempt + 1}/$maxAttempts)")
+                return block()
+            } catch (e: Exception) {
+                lastException = e
+                val isTimeout = e.message?.contains("timeout", ignoreCase = true) == true
+                val isNetworkError = e.message?.contains("network", ignoreCase = true) == true
+
+                Log.w(TAG, "操作失败 (尝试 ${attempt + 1}/$maxAttempts): $operation", e)
+
+                if (isTimeout || isNetworkError) {
+                    if (attempt < maxAttempts - 1) {
+                        val delayMs = RETRY_DELAY_MS * (attempt + 1) // 递增延迟
+                        Log.d(TAG, "网络错误，${delayMs}ms后重试...")
+                        delay(delayMs)
+                    }
+                } else {
+                    // 非网络错误，不重试
+                    Log.e(TAG, "非网络错误，停止重试: ${e.message}")
+                    throw e
+                }
+            }
+        }
+
+        // 所有重试都失败了
+        Log.e(TAG, "操作最终失败: $operation")
+        throw lastException ?: Exception("操作失败且无异常信息")
+    }
     
     /**
      * 获取或创建用户的活跃对话
@@ -61,12 +112,14 @@ class SupportRepository {
     suspend fun getOrCreateActiveConversation(): SupportConversation? = withContext(Dispatchers.IO) {
         try {
             Log.d(TAG, "=== 开始获取或创建活跃对话 ===")
+            Log.d(TAG, "连接状态: 连接中...")
 
             val currentUser = client.auth.currentUserOrNull()
             Log.d(TAG, "当前用户状态: ${if (currentUser != null) "已登录 - ${currentUser.id}" else "未登录"}")
 
             if (currentUser == null) {
                 Log.w(TAG, "用户未登录，无法获取对话")
+                Log.e(TAG, "连接状态: 连接失败 - 用户未登录")
                 return@withContext null
             }
 
@@ -114,6 +167,7 @@ class SupportRepository {
                 Log.d(TAG, "  状态: ${conversation.status}")
                 Log.d(TAG, "  创建时间: ${conversation.createdAt}")
                 Log.d(TAG, "  最后消息时间: ${conversation.lastMessageAt}")
+                Log.d(TAG, "连接状态: 连接成功 - 使用现有对话")
                 return@withContext conversation
             }
 
@@ -156,6 +210,7 @@ class SupportRepository {
             Log.d(TAG, "  状态: ${newConversation.status}")
             Log.d(TAG, "  创建时间: ${newConversation.createdAt}")
             Log.d(TAG, "  最后消息时间: ${newConversation.lastMessageAt}")
+            Log.d(TAG, "连接状态: 连接成功 - 创建新对话")
 
             return@withContext newConversation
 
@@ -163,6 +218,7 @@ class SupportRepository {
             Log.e(TAG, "=== 获取或创建对话失败 ===", e)
             Log.e(TAG, "异常详情: ${e.message}")
             Log.e(TAG, "异常类型: ${e.javaClass.simpleName}")
+            Log.e(TAG, "连接状态: 连接失败 - ${e.message}")
             return@withContext null
         }
     }
@@ -176,28 +232,44 @@ class SupportRepository {
         messageType: String = SupportMessage.TYPE_TEXT
     ): Boolean = withContext(Dispatchers.IO) {
         try {
-            Log.d(TAG, "发送客服消息: $conversationId")
-            
+            Log.d(TAG, "=== 开始发送客服消息 ===")
+            Log.d(TAG, "对话ID: $conversationId")
+            Log.d(TAG, "消息类型: $messageType")
+            Log.d(TAG, "消息长度: ${messageText.length} 字符")
+
             val currentUser = client.auth.currentUserOrNull()
             if (currentUser == null) {
                 Log.w(TAG, "用户未登录，无法发送消息")
+                Log.e(TAG, "消息发送失败: 用户未登录")
                 return@withContext false
             }
-            
-            client.from("support_messages").insert(
-                buildJsonObject {
-                    put("conversation_id", conversationId)
-                    put("sender_id", currentUser.id)
-                    put("message_text", messageText)
-                    put("message_type", messageType)
-                    put("is_from_support", false) // 用户发送的消息
-                }
-            )
-            
-            Log.d(TAG, "客服消息发送成功")
+
+            Log.d(TAG, "发送者ID: ${currentUser.id}")
+
+            // 使用重试机制发送消息
+            executeWithRetry("发送客服消息") {
+                Log.d(TAG, "开始向数据库插入消息...")
+                val insertResult = client.from("support_messages").insert(
+                    buildJsonObject {
+                        put("conversation_id", conversationId)
+                        put("sender_id", currentUser.id)
+                        put("message_text", messageText)
+                        put("message_type", messageType)
+                        put("is_from_support", false) // 用户发送的消息
+                    }
+                )
+                Log.d(TAG, "数据库插入操作完成，结果: $insertResult")
+            }
+
+            Log.d(TAG, "=== 客服消息发送成功 ===")
             return@withContext true
         } catch (e: Exception) {
-            Log.e(TAG, "发送客服消息失败", e)
+            Log.e(TAG, "=== 发送客服消息失败 ===", e)
+            Log.e(TAG, "异常类型: ${e.javaClass.simpleName}")
+            Log.e(TAG, "异常消息: ${e.message}")
+            if (e.message?.contains("timeout", ignoreCase = true) == true) {
+                Log.e(TAG, "网络超时错误: 消息发送超时，请检查网络连接")
+            }
             return@withContext false
         }
     }
@@ -250,7 +322,8 @@ class SupportRepository {
         onMessagesUpdate: (List<SupportMessage>) -> Unit
     ) {
         try {
-            Log.d(TAG, "订阅对话实时消息: $conversationId")
+            Log.d(TAG, "=== 开始订阅对话实时消息 ===")
+            Log.d(TAG, "对话ID: $conversationId")
 
             // 保存回调函数
             onMessagesUpdated = onMessagesUpdate
@@ -258,6 +331,7 @@ class SupportRepository {
             // 取消之前的订阅
             messageChannel?.let { channel ->
                 try {
+                    Log.d(TAG, "取消之前的订阅...")
                     CoroutineScope(Dispatchers.IO).launch {
                         channel.unsubscribe()
                     }
@@ -266,35 +340,94 @@ class SupportRepository {
                 }
             }
 
-            // 简化的实时订阅实现
-            // 使用轮询方式作为备选方案
-            Log.d(TAG, "使用轮询方式监听新消息")
+            // 首先加载现有消息
+            Log.d(TAG, "加载现有消息...")
+            val existingMessages = getConversationMessages(conversationId, 50)
+            Log.d(TAG, "现有消息数量: ${existingMessages.size}")
+            onMessagesUpdate(existingMessages)
 
-            // 启动协程定期检查新消息
-            CoroutineScope(Dispatchers.IO).launch {
-                var lastMessageCount = 0
-                while (true) {
-                    try {
-                        val messages = getConversationMessages(conversationId, 50)
-                        if (messages.size > lastMessageCount) {
-                            Log.d(TAG, "检测到新消息: ${messages.size - lastMessageCount} 条")
-                            // 通过回调更新UI状态
+            // 使用Supabase Realtime实现真正的实时订阅
+            Log.d(TAG, "创建Supabase实时消息订阅...")
+            try {
+                messageChannel = client.realtime.channel("support_messages_$conversationId")
+
+                // 订阅通道
+                messageChannel?.subscribe(blockUntilSubscribed = true)
+                Log.d(TAG, "=== 实时消息订阅成功 ===")
+
+                // 监听PostgreSQL数据库变化
+                val changeFlow = messageChannel?.postgresChangeFlow<PostgresAction>(
+                    schema = "public"
+                ) {
+                    table = "support_messages"
+                    filter("conversation_id", FilterOperator.EQ, conversationId)
+                }
+
+                // 启动协程监听数据库变化
+                CoroutineScope(Dispatchers.IO).launch {
+                    changeFlow?.collect { change ->
+                        Log.d(TAG, "=== 收到数据库变化 ===")
+                        Log.d(TAG, "变化类型: ${change::class.simpleName}")
+
+                        // 重新加载消息列表
+                        try {
+                            val messages = getConversationMessages(conversationId, 50)
+                            Log.d(TAG, "重新加载消息数量: ${messages.size}")
                             onMessagesUpdate(messages)
-                            lastMessageCount = messages.size
+                        } catch (e: Exception) {
+                            Log.e(TAG, "重新加载消息失败", e)
                         }
-                        kotlinx.coroutines.delay(3000) // 每3秒检查一次
-                    } catch (e: Exception) {
-                        Log.e(TAG, "检查新消息失败", e)
-                        kotlinx.coroutines.delay(5000) // 出错时等待5秒
                     }
                 }
+
+                // 订阅成功后，立即加载一次消息
+                CoroutineScope(Dispatchers.IO).launch {
+                    try {
+                        val messages = getConversationMessages(conversationId, 50)
+                        onMessagesUpdate(messages)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "加载初始消息失败", e)
+                    }
+                }
+
+            } catch (realtimeError: Exception) {
+                Log.e(TAG, "Realtime订阅失败", realtimeError)
+                throw realtimeError
             }
 
-            Log.d(TAG, "实时消息监听启动成功")
+            Log.d(TAG, "=== 实时消息订阅成功 ===")
         } catch (e: Exception) {
-            Log.e(TAG, "启动实时消息监听失败", e)
+            Log.e(TAG, "=== 启动实时消息监听失败 ===", e)
+            Log.e(TAG, "异常类型: ${e.javaClass.simpleName}")
+            Log.e(TAG, "异常消息: ${e.message}")
+            throw e
         }
     }
+
+    /**
+     * 取消消息订阅
+     */
+    suspend fun unsubscribeFromMessages() {
+        try {
+            Log.d(TAG, "取消消息订阅...")
+
+            messageChannel?.let { channel ->
+                CoroutineScope(Dispatchers.IO).launch {
+                    channel.unsubscribe()
+                }
+                messageChannel = null
+            }
+
+            // Realtime订阅会在channel取消订阅时自动停止
+
+            onMessagesUpdated = null
+            Log.d(TAG, "消息订阅已取消")
+        } catch (e: Exception) {
+            Log.e(TAG, "取消消息订阅失败", e)
+        }
+    }
+
+
     
     /**
      * 提交用户反馈
@@ -307,37 +440,53 @@ class SupportRepository {
         appVersion: String? = null
     ): Boolean = withContext(Dispatchers.IO) {
         try {
-            Log.d(TAG, "提交用户反馈: $title")
-            
+            Log.d(TAG, "=== 开始提交用户反馈 ===")
+            Log.d(TAG, "反馈标题: $title")
+            Log.d(TAG, "反馈类型: $feedbackType")
+            Log.d(TAG, "反馈优先级: $priority")
+            Log.d(TAG, "描述长度: ${description.length} 字符")
+
             val currentUser = client.auth.currentUserOrNull()
             if (currentUser == null) {
                 Log.w(TAG, "用户未登录，无法提交反馈")
+                Log.e(TAG, "反馈提交失败: 用户未登录")
                 return@withContext false
             }
-            
+
+            Log.d(TAG, "用户ID: ${currentUser.id}")
+
             // 构建设备信息
             val deviceInfo = buildJsonObject {
                 put("platform", "Android TV")
                 put("app", "OneTV")
                 put("version", appVersion ?: "unknown")
             }
-            
-            client.from("user_feedback").insert(
-                buildJsonObject {
-                    put("user_id", currentUser.id)
-                    put("feedback_type", feedbackType)
-                    put("title", title)
-                    put("description", description)
-                    put("priority", priority)
-                    put("device_info", deviceInfo)
-                    put("app_version", appVersion)
-                }
-            )
-            
-            Log.d(TAG, "用户反馈提交成功")
+
+            // 使用重试机制提交反馈
+            executeWithRetry("提交用户反馈") {
+                Log.d(TAG, "开始向数据库插入反馈数据...")
+                val insertResult = client.from("user_feedback").insert(
+                    buildJsonObject {
+                        put("user_id", currentUser.id)
+                        put("feedback_type", feedbackType)
+                        put("title", title)
+                        put("description", description)
+                        put("priority", priority)
+                        put("device_info", deviceInfo)
+                        put("app_version", appVersion)
+                    }
+                )
+                Log.d(TAG, "数据库插入操作完成，结果: $insertResult")
+            }
+            Log.d(TAG, "=== 用户反馈提交成功 ===")
             return@withContext true
         } catch (e: Exception) {
-            Log.e(TAG, "提交用户反馈失败", e)
+            Log.e(TAG, "=== 提交用户反馈失败 ===", e)
+            Log.e(TAG, "异常类型: ${e.javaClass.simpleName}")
+            Log.e(TAG, "异常消息: ${e.message}")
+            if (e.message?.contains("timeout", ignoreCase = true) == true) {
+                Log.e(TAG, "网络超时错误: 请检查网络连接或稍后重试")
+            }
             return@withContext false
         }
     }
@@ -761,6 +910,12 @@ class SupportRepository {
                 }
                 .decodeList<Map<String, String>>()
 
+            // 添加详细日志来调试状态问题
+            Log.d(TAG, "获取到的反馈数据: $userFeedbacks")
+            userFeedbacks.forEachIndexed { index, feedback ->
+                Log.d(TAG, "反馈 $index: status = '${feedback["status"]}', 类型: ${feedback["status"]?.javaClass?.simpleName}")
+            }
+
             val stats = mutableMapOf<String, Int>()
             stats["total"] = userFeedbacks.size
             stats["submitted"] = userFeedbacks.count { it["status"] == "submitted" }
@@ -803,13 +958,16 @@ class SupportRepository {
                 }
                 .decodeList<JsonObject>()
                 .map { feedbackJson ->
+                    val status = feedbackJson["status"]?.jsonPrimitive?.contentOrNull ?: "submitted"
+                    Log.d(TAG, "解析反馈状态: 原始值='${feedbackJson["status"]}', 解析后='$status'")
+
                     UserFeedback(
                         id = feedbackJson["id"]?.jsonPrimitive?.contentOrNull ?: "",
                         userId = feedbackJson["user_id"]?.jsonPrimitive?.contentOrNull ?: "",
                         feedbackType = feedbackJson["feedback_type"]?.jsonPrimitive?.contentOrNull ?: "general",
                         title = feedbackJson["title"]?.jsonPrimitive?.contentOrNull ?: "",
                         description = feedbackJson["description"]?.jsonPrimitive?.contentOrNull ?: "",
-                        status = feedbackJson["status"]?.jsonPrimitive?.contentOrNull ?: "submitted",
+                        status = status,
                         priority = feedbackJson["priority"]?.jsonPrimitive?.contentOrNull ?: "normal",
                         adminResponse = feedbackJson["admin_response"]?.jsonPrimitive?.contentOrNull,
                         adminId = feedbackJson["admin_id"]?.jsonPrimitive?.contentOrNull,
@@ -837,16 +995,24 @@ class SupportRepository {
      * 清理资源
      */
     fun cleanup() {
-        messageChannel?.let { channel ->
-            CoroutineScope(Dispatchers.IO).launch {
-                try {
-                    channel.unsubscribe()
-                } catch (e: Exception) {
-                    Log.w(TAG, "清理订阅通道失败", e)
+        try {
+            messageChannel?.let { channel ->
+                CoroutineScope(Dispatchers.IO).launch {
+                    try {
+                        channel.unsubscribe()
+                    } catch (e: Exception) {
+                        Log.w(TAG, "清理订阅通道失败", e)
+                    }
                 }
             }
+            messageChannel = null
+
+            // Realtime订阅已在上面取消
+
+            Log.d(TAG, "资源清理完成")
+        } catch (e: Exception) {
+            Log.w(TAG, "清理资源失败", e)
         }
-        messageChannel = null
     }
 
     /**
@@ -1286,7 +1452,7 @@ class SupportRepository {
 
             // 先查询反馈是否存在且属于当前用户
             val existingFeedback = client.from("user_feedback")
-                .select {
+                .select(columns = Columns.list("id", "status", "title")) {
                     filter {
                         eq("id", feedbackId)
                         eq("user_id", currentUser.id)
@@ -1339,7 +1505,7 @@ class SupportRepository {
 
             // 先查询反馈是否存在且属于当前用户
             val existingFeedback = client.from("user_feedback")
-                .select {
+                .select(columns = Columns.list("id", "title", "user_id")) {
                     filter {
                         eq("id", feedbackId)
                         eq("user_id", currentUser.id)
@@ -1349,16 +1515,52 @@ class SupportRepository {
 
             Log.d(TAG, "查询到要删除的反馈: ${existingFeedback["title"]?.jsonPrimitive?.content}")
 
-            // 从数据库删除反馈
-            val deleteResult = client.from("user_feedback")
-                .delete {
+            // 删除前再次确认记录存在
+            val beforeDeleteCount = client.from("user_feedback")
+                .select(Columns.list("id")) {
                     filter {
                         eq("id", feedbackId)
-                        eq("user_id", currentUser.id) // 确保只能删除自己的反馈
+                        eq("user_id", currentUser.id)
                     }
                 }
+                .decodeList<JsonObject>()
+                .size
+            Log.d(TAG, "删除前记录数量: $beforeDeleteCount")
 
-            Log.d(TAG, "反馈删除操作完成，结果: $deleteResult")
+            // 使用Edge Function删除反馈
+            executeWithRetry("删除用户反馈") {
+                Log.d(TAG, "开始通过Edge Function删除反馈...")
+                Log.d(TAG, "删除参数: feedbackId=$feedbackId, userId=${currentUser.id}")
+
+                // 构建请求体
+                val requestBody = buildJsonObject {
+                    put("action", "delete_feedback")
+                    put("feedback_id", feedbackId)
+                }
+                val requestBodyString = requestBody.toString()
+                Log.d(TAG, "Edge Function请求体: $requestBodyString")
+
+                // 使用Edge Function删除反馈
+                val response = functions.invoke(
+                    function = "support-management",
+                    body = requestBodyString
+                )
+
+                val result = response.safeBody<JsonObject>()
+                Log.d(TAG, "Edge Function删除结果: $result")
+
+                // 检查删除结果
+                val success = result["success"]?.jsonPrimitive?.content?.toBoolean() ?: false
+                if (!success) {
+                    val errorMessage = result["error"]?.jsonPrimitive?.content ?: "删除失败"
+                    Log.e(TAG, "Edge Function删除失败: $errorMessage")
+                    throw Exception("删除失败: $errorMessage")
+                }
+
+                Log.d(TAG, "Edge Function删除成功")
+            }
+
+            Log.d(TAG, "反馈删除操作完成")
             return@withContext true
         } catch (e: Exception) {
             Log.e(TAG, "删除反馈失败", e)

@@ -13,6 +13,61 @@ import java.time.format.DateTimeFormatter
 private const val TAG = "SupportModels"
 
 /**
+ * 解析和清理日期时间字符串，支持微秒格式和时区偏移
+ * 支持格式：
+ * - 2025-07-02T11:11:32.902096+08:00 (微秒+时区)
+ * - 2025-07-02T11:11:32.902+08:00 (毫秒+时区)
+ * - 2025-07-02T11:11:32+08:00 (秒+时区)
+ * - 2025-07-02T11:11:32Z (UTC)
+ * - 2025-07-02T11:11:32 (本地时间)
+ */
+private fun parseAndCleanDateTime(dateTimeString: String): String {
+    Log.d(TAG, "parseAndCleanDateTime: 原始时间字符串 = '$dateTimeString'")
+
+    if (dateTimeString.isBlank()) {
+        Log.w(TAG, "parseAndCleanDateTime: 时间字符串为空")
+        return ""
+    }
+
+    try {
+        // 清理字符串，移除引号和空格
+        var cleaned = dateTimeString.trim().removeSurrounding("\"")
+        Log.d(TAG, "parseAndCleanDateTime: 清理引号后 = '$cleaned'")
+
+        // 处理时区偏移 (+08:00, -05:00 等)
+        if (cleaned.contains("+") || cleaned.contains("-")) {
+            val timeZoneIndex = maxOf(cleaned.lastIndexOf("+"), cleaned.lastIndexOf("-"))
+            if (timeZoneIndex > 10) { // 确保不是日期部分的减号
+                cleaned = cleaned.substring(0, timeZoneIndex)
+                Log.d(TAG, "parseAndCleanDateTime: 移除时区后 = '$cleaned'")
+            }
+        }
+
+        // 处理UTC标记
+        if (cleaned.endsWith("Z")) {
+            cleaned = cleaned.dropLast(1)
+            Log.d(TAG, "parseAndCleanDateTime: 移除Z后 = '$cleaned'")
+        }
+
+        // 处理微秒：如果小数点后超过3位，截取到3位（毫秒）
+        if (cleaned.contains(".")) {
+            val parts = cleaned.split(".")
+            if (parts.size == 2 && parts[1].length > 3) {
+                cleaned = "${parts[0]}.${parts[1].substring(0, 3)}"
+                Log.d(TAG, "parseAndCleanDateTime: 截取微秒到毫秒 = '$cleaned'")
+            }
+        }
+
+        Log.d(TAG, "parseAndCleanDateTime: 最终清理结果 = '$cleaned'")
+        return cleaned
+
+    } catch (e: Exception) {
+        Log.e(TAG, "parseAndCleanDateTime: 清理时间字符串失败，原始值='$dateTimeString'", e)
+        return dateTimeString // 返回原始值，让调用者处理
+    }
+}
+
+/**
  * 客服对话数据模型
  */
 @Serializable
@@ -84,17 +139,11 @@ data class SupportConversation(
         }
 
         return try {
-            // 处理多种时间格式
-            val cleanedTime = lastMessageAt.replace("Z", "").replace("+00:00", "")
+            // 处理多种时间格式，包括微秒和时区
+            val cleanedTime = parseAndCleanDateTime(lastMessageAt)
             Log.d(TAG, "SupportConversation.getFormattedLastMessageTime: 清理后的时间 = '$cleanedTime'")
 
-            val dateTime = if (cleanedTime.contains("T")) {
-                LocalDateTime.parse(cleanedTime)
-            } else {
-                // 如果没有T分隔符，尝试其他格式
-                LocalDateTime.parse(cleanedTime.replace(" ", "T"))
-            }
-
+            val dateTime = LocalDateTime.parse(cleanedTime)
             val formatted = dateTime.format(DateTimeFormatter.ofPattern("MM-dd HH:mm"))
             Log.d(TAG, "SupportConversation.getFormattedLastMessageTime: 格式化成功 = '$formatted'")
             formatted
@@ -116,12 +165,8 @@ data class SupportConversation(
     fun getFormattedCreatedTime(): String {
         Log.d(TAG, "SupportConversation.getFormattedCreatedTime: 格式化创建时间 - createdAt = '$createdAt'")
         return try {
-            val cleanedTime = createdAt.replace("Z", "").replace("+00:00", "")
-            val dateTime = if (cleanedTime.contains("T")) {
-                LocalDateTime.parse(cleanedTime)
-            } else {
-                LocalDateTime.parse(cleanedTime.replace(" ", "T"))
-            }
+            val cleanedTime = parseAndCleanDateTime(createdAt)
+            val dateTime = LocalDateTime.parse(cleanedTime)
             val formatted = dateTime.format(DateTimeFormatter.ofPattern("MM-dd HH:mm"))
             Log.d(TAG, "SupportConversation.getFormattedCreatedTime: 格式化成功 = '$formatted'")
             formatted
@@ -213,12 +258,13 @@ data class UserFeedback(
         const val TYPE_COMPLAINT = "complaint"
         const val TYPE_SUGGESTION = "suggestion"
         const val TYPE_GENERAL = "general"
-        
+
         const val STATUS_SUBMITTED = "submitted"
         const val STATUS_REVIEWING = "reviewing"
         const val STATUS_RESOLVED = "resolved"
         const val STATUS_CLOSED = "closed"
-        
+        const val STATUS_WITHDRAWN = "withdrawn"
+
         const val PRIORITY_LOW = "low"
         const val PRIORITY_NORMAL = "normal"
         const val PRIORITY_HIGH = "high"
@@ -236,6 +282,7 @@ data class UserFeedback(
             STATUS_REVIEWING -> "处理中"
             STATUS_RESOLVED -> "已解决"
             STATUS_CLOSED -> "已关闭"
+            STATUS_WITHDRAWN -> "已撤回"
             else -> {
                 Log.w(TAG, "UserFeedback.getStatusText: 未知状态 = '$status'")
                 "未知状态"
@@ -249,15 +296,10 @@ data class UserFeedback(
     fun getFormattedCreatedTime(): String {
         Log.d(TAG, "UserFeedback.getFormattedCreatedTime: 格式化创建时间 - createdAt = '$createdAt'")
         return try {
-            // 处理多种时间格式
-            val cleanedTime = createdAt.replace("Z", "").replace("+00:00", "")
+            val cleanedTime = parseAndCleanDateTime(createdAt)
             Log.d(TAG, "UserFeedback.getFormattedCreatedTime: 清理后的时间 = '$cleanedTime'")
 
-            val dateTime = if (cleanedTime.contains("T")) {
-                LocalDateTime.parse(cleanedTime)
-            } else {
-                LocalDateTime.parse(cleanedTime.replace(" ", "T"))
-            }
+            val dateTime = LocalDateTime.parse(cleanedTime)
             val formatted = dateTime.format(DateTimeFormatter.ofPattern("MM-dd HH:mm"))
             Log.d(TAG, "UserFeedback.getFormattedCreatedTime: 格式化成功 = '$formatted'")
             formatted
@@ -453,7 +495,8 @@ data class UserProfile(
      */
     fun getFormattedCreatedTime(): String {
         return try {
-            val dateTime = LocalDateTime.parse(createdAt.replace("Z", ""))
+            val cleanedTime = parseAndCleanDateTime(createdAt)
+            val dateTime = LocalDateTime.parse(cleanedTime)
             dateTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
         } catch (e: Exception) {
             "未知时间"

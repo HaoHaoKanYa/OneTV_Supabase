@@ -19,6 +19,7 @@
  * - get_user_roles: 获取用户角色列表
  * - add_user_role: 为用户添加角色
  * - remove_user_role: 移除用户角色
+ * - delete_feedback: 删除用户反馈
  *
  * 权限系统：
  * - 支持多角色系统（一个用户可以同时拥有多个角色）
@@ -78,9 +79,20 @@ serve(async (req) => {
       )
     }
 
-    // 解析请求参数
+    // 解析请求参数 - 支持从URL参数或请求体获取action
     const url = new URL(req.url)
-    const action = url.searchParams.get('action')
+    let action = url.searchParams.get('action')
+    let requestBody = null
+
+    // 如果URL参数中没有action，尝试从请求体中获取
+    if (!action) {
+      try {
+        requestBody = await req.json()
+        action = requestBody.action
+      } catch (e) {
+        // 如果解析请求体失败，继续使用URL参数
+      }
+    }
 
     // 根据操作类型分发请求
     switch (action) {
@@ -108,6 +120,9 @@ serve(async (req) => {
       case 'remove_user_role':
         // 移除用户角色
         return await removeUserRole(req, supabaseClient, user)
+      case 'delete_feedback':
+        // 删除用户反馈
+        return await deleteFeedback(req, supabaseClient, user, requestBody)
       default:
         return new Response(
           JSON.stringify({ error: '无效的操作类型' }),
@@ -583,11 +598,140 @@ async function removeUserRole(req: Request, supabaseClient: any, user: any) {
 }
 
 /**
+ * 删除用户反馈
+ * @param req 请求对象
+ * @param supabaseClient Supabase 客户端
+ * @param user 当前用户信息
+ * @returns 删除结果
+ */
+async function deleteFeedback(req: Request, supabaseClient: any, user: any, requestBody: any = null) {
+  try {
+    // 解析请求参数
+    let feedback_id
+
+    if (requestBody) {
+      feedback_id = requestBody.feedback_id
+    } else {
+      try {
+        const body = await req.json()
+        feedback_id = body.feedback_id
+      } catch (e) {
+        // 如果请求体解析失败，尝试从URL参数获取
+        const url = new URL(req.url)
+        feedback_id = url.searchParams.get('feedback_id')
+      }
+    }
+
+    if (!feedback_id) {
+      return new Response(
+        JSON.stringify({ error: '缺少反馈ID' }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      )
+    }
+
+    // 检查反馈是否存在且属于当前用户
+    const { data: feedback, error: checkError } = await supabaseClient
+      .from('user_feedback')
+      .select('user_id, title')
+      .eq('id', feedback_id)
+      .single()
+
+    if (checkError || !feedback) {
+      return new Response(
+        JSON.stringify({ error: '反馈不存在' }),
+        {
+          status: 404,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      )
+    }
+
+    // 检查权限：用户只能删除自己的反馈
+    if (feedback.user_id !== user.id) {
+      return new Response(
+        JSON.stringify({ error: '权限不足：只能删除自己的反馈' }),
+        {
+          status: 403,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      )
+    }
+
+    // 执行删除操作
+    const { error: deleteError } = await supabaseClient
+      .from('user_feedback')
+      .delete()
+      .eq('id', feedback_id)
+      .eq('user_id', user.id) // 双重确认安全性
+
+    if (deleteError) {
+      return new Response(
+        JSON.stringify({ error: `删除反馈失败: ${deleteError.message}` }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      )
+    }
+
+    // 验证删除是否成功
+    const { data: verifyData, error: verifyError } = await supabaseClient
+      .from('user_feedback')
+      .select('id')
+      .eq('id', feedback_id)
+
+    if (verifyError) {
+      // 查询出错可能意味着删除成功
+      return new Response(
+        JSON.stringify({
+          success: true,
+          message: '反馈删除成功'
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      )
+    }
+
+    if (verifyData && verifyData.length > 0) {
+      return new Response(
+        JSON.stringify({ error: '删除失败：反馈仍然存在' }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      )
+    }
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        message: '反馈删除成功'
+      }),
+      {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      }
+    )
+  } catch (error) {
+    return new Response(
+      JSON.stringify({ error: `删除反馈异常: ${error.message}` }),
+      {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      }
+    )
+  }
+}
+
+/**
  * ===========================================
  * 文件结束 - OneTV 客服支持管理系统
  *
- * 版本: 2.0
- * 更新时间: 2025-07-01
- * 功能: 多角色权限管理 + 客服对话系统
+ * 版本: 2.1
+ * 更新时间: 2025-07-02
+ * 功能: 多角色权限管理 + 客服对话系统 + 反馈删除
  * ===========================================
  */

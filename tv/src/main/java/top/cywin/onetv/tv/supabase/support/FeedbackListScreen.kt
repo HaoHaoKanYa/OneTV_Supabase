@@ -1,6 +1,8 @@
 package top.cywin.onetv.tv.supabase.support
 
 import android.util.Log
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -15,34 +17,41 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-
-private const val TAG = "FeedbackListScreen"
+import java.text.SimpleDateFormat
+import java.util.*
 
 /**
- * 用户反馈列表界面
+ * 反馈列表界面
+ * 显示用户提交的反馈列表，支持查看详情、撤回和删除操作
  */
 @Composable
 fun FeedbackListScreen(
-    modifier: Modifier = Modifier,
     viewModel: SupportViewModel,
+    modifier: Modifier = Modifier,
     onClose: () -> Unit = {}
 ) {
-    Log.d(TAG, "FeedbackListScreen: 初始化反馈列表界面")
     val uiState by viewModel.uiState.collectAsState()
-
+    
     LaunchedEffect(Unit) {
-        Log.d(TAG, "FeedbackListScreen: 加载用户反馈列表")
+        Log.d("FeedbackListScreen", "加载反馈列表")
         viewModel.loadUserFeedbackList()
     }
     
-    Column(
+    Box(
         modifier = modifier
             .fillMaxSize()
-            .padding(4.dp)
+            .background(Color.Black.copy(alpha = 0.8f))
     ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp)
+        ) {
             // 标题栏
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -52,82 +61,147 @@ fun FeedbackListScreen(
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold
                 )
-                
-                Button(
-                    onClick = onClose,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color.Red.copy(alpha = 0.7f)
-                    )
+
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Text("关闭", color = Color.White)
+                    // 返回按钮
+                    Button(
+                        onClick = onClose,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color.Red.copy(alpha = 0.7f)
+                        ),
+                        modifier = Modifier.padding(4.dp)
+                    ) {
+                        Text("返回", color = Color.White, fontSize = 12.sp)
+                    }
+
+                    // 刷新按钮
+                    Button(
+                        onClick = { viewModel.loadUserFeedbackList() },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF333333)
+                        ),
+                        modifier = Modifier.padding(4.dp)
+                    ) {
+                        Text("刷新", color = Color.White, fontSize = 12.sp)
+                    }
                 }
             }
             
-            Spacer(modifier = Modifier.height(16.dp))
-            
             // 反馈列表
-            if (uiState.feedbackState.isLoading) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator(color = Color.White)
+            when {
+                uiState.feedbackState.isLoading -> {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(color = Color.White)
+                    }
                 }
-            } else if (uiState.feedbackState.feedbackList.isEmpty()) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally
+                
+                uiState.feedbackState.error != null -> {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                text = "加载失败",
+                                color = Color.Red,
+                                fontSize = 16.sp
+                            )
+                            Text(
+                                text = uiState.feedbackState.error ?: "未知错误",
+                                color = Color.Gray,
+                                fontSize = 12.sp,
+                                modifier = Modifier.padding(top = 8.dp)
+                            )
+                            Button(
+                                onClick = { viewModel.loadUserFeedbackList() },
+                                modifier = Modifier.padding(top = 16.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFF333333)
+                                )
+                            ) {
+                                Text("重试", color = Color.White)
+                            }
+                        }
+                    }
+                }
+                
+                uiState.feedbackState.feedbackList.isEmpty() -> {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
                     ) {
                         Text(
                             text = "暂无反馈记录",
                             color = Color.Gray,
-                            fontSize = 18.sp
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "您还没有提交过任何反馈",
-                            color = Color.Gray,
-                            fontSize = 14.sp
+                            fontSize = 16.sp
                         )
                     }
                 }
-            } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                
+                else -> {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(uiState.feedbackState.feedbackList) { feedback ->
+                            FeedbackListItem(
+                                feedback = feedback,
+                                onClick = {
+                                    Log.d("FeedbackListScreen", "点击反馈项: ${feedback.id}")
+                                    viewModel.showFeedbackDetail(feedback)
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        
+        // 反馈详情弹窗
+        if (uiState.showFeedbackDetail && uiState.selectedFeedback != null) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.7f))
+                    .clickable { viewModel.hideFeedbackDetail() },
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(0.67f)
+                        .fillMaxHeight(0.67f)
+                        .background(
+                            color = Color.Black.copy(alpha = 0.9f),
+                            shape = RoundedCornerShape(4.dp)
+                        )
+                        .border(
+                            width = 1.dp,
+                            color = Color.Gray.copy(alpha = 0.3f),
+                            shape = RoundedCornerShape(4.dp)
+                        )
                 ) {
-                    items(uiState.feedbackState.feedbackList) { feedback ->
-                        FeedbackListItem(
+                    uiState.selectedFeedback?.let { feedback ->
+                        FeedbackDetailDialog(
                             feedback = feedback,
-                            onClick = {
-                                // 点击反馈项打开详情弹窗
-                                viewModel.showFeedbackDetail(feedback)
+                            onClose = { viewModel.hideFeedbackDetail() },
+                            onWithdraw = { feedbackId ->
+                                viewModel.withdrawFeedback(feedbackId)
+                            },
+                            onDelete = { feedbackId ->
+                                viewModel.deleteFeedback(feedbackId)
                             }
                         )
                     }
                 }
             }
-            
-            // 错误信息显示
-            uiState.feedbackState.error?.let { error ->
-                Spacer(modifier = Modifier.height(16.dp))
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = Color.Red.copy(alpha = 0.2f)
-                    )
-                ) {
-                    Text(
-                        text = error,
-                        color = Color.Red,
-                        modifier = Modifier.padding(16.dp),
-                        fontSize = 14.sp
-                    )
-                }
-            }
+        }
     }
 }
 
@@ -146,83 +220,49 @@ private fun FeedbackListItem(
                 .fillMaxWidth()
                 .clickable { onClick() }
                 .padding(vertical = 8.dp, horizontal = 4.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // 标题（占据主要空间）
+            // 标题（占主要空间）
             Text(
                 text = feedback.title,
                 color = Color.White,
-                fontSize = 16.sp,
+                fontSize = 14.sp,
                 fontWeight = FontWeight.Medium,
-                modifier = Modifier.weight(2f),
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
             )
+            
+            // 类型标签
+            FeedbackTypeChip(feedback.feedbackType)
 
-            Spacer(modifier = Modifier.width(8.dp))
+            // 状态标签
+            FeedbackStatusChip(feedback.status)
 
-            // 类型
+            // 时间
             Text(
-                text = feedback.getTypeText(),
-                color = Color(0xFF4285F4),
-                fontSize = 12.sp,
-                modifier = Modifier.weight(0.8f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-
-            Spacer(modifier = Modifier.width(8.dp))
-
-            // 状态
-            Text(
-                text = feedback.getStatusText(),
-                color = when (feedback.status) {
-                    UserFeedback.STATUS_SUBMITTED -> Color(0xFFFF9800)
-                    UserFeedback.STATUS_REVIEWING -> Color(0xFF2196F3)
-                    UserFeedback.STATUS_RESOLVED -> Color(0xFF4CAF50)
-                    UserFeedback.STATUS_CLOSED -> Color(0xFF9E9E9E)
-                    else -> Color.Gray
-                },
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Medium,
-                modifier = Modifier.weight(0.6f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-
-            Spacer(modifier = Modifier.width(8.dp))
-
-            // 提交时间
-            Text(
-                text = feedback.getFormattedCreatedTime(),
+                text = formatDateTime(feedback.createdAt),
                 color = Color.Gray,
-                fontSize = 12.sp,
-                modifier = Modifier.weight(0.8f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                fontSize = 11.sp
             )
 
-            Spacer(modifier = Modifier.width(8.dp))
-
-            // 回复数
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(2.dp)
-            ) {
+            // 回复数（如果有）
+            if ((feedback.adminResponse?.isNotEmpty() == true)) {
                 Text(
-                    text = "💬",
-                    fontSize = 12.sp
-                )
-                Text(
-                    text = if (!feedback.adminResponse.isNullOrBlank()) "1" else "0",
-                    color = if (!feedback.adminResponse.isNullOrBlank()) Color(0xFF4285F4) else Color.Gray,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium
+                    text = "已回复",
+                    color = Color(0xFF4CAF50),
+                    fontSize = 10.sp,
+                    modifier = Modifier
+                        .background(
+                            Color(0xFF4CAF50).copy(alpha = 0.2f),
+                            RoundedCornerShape(8.dp)
+                        )
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
                 )
             }
         }
-
+        
         // 分隔线
         Divider(
             color = Color.Gray.copy(alpha = 0.3f),
@@ -233,95 +273,78 @@ private fun FeedbackListItem(
 }
 
 /**
- * 状态标签
+ * 反馈类型标签
  */
 @Composable
-private fun StatusChip(status: String) {
-    val (backgroundColor, textColor) = when (status) {
-        UserFeedback.STATUS_SUBMITTED -> Color(0xFFFF9800).copy(alpha = 0.3f) to Color(0xFFFF9800)
-        UserFeedback.STATUS_REVIEWING -> Color(0xFF2196F3).copy(alpha = 0.3f) to Color(0xFF2196F3)
-        UserFeedback.STATUS_RESOLVED -> Color(0xFF4CAF50).copy(alpha = 0.3f) to Color(0xFF4CAF50)
-        UserFeedback.STATUS_CLOSED -> Color(0xFF9E9E9E).copy(alpha = 0.3f) to Color(0xFF9E9E9E)
-        else -> Color.Gray.copy(alpha = 0.3f) to Color.Gray
+private fun FeedbackTypeChip(type: String) {
+    val (color, text) = when (type) {
+        "问题报告" -> Color(0xFFFF5722) to "问题"
+        "功能建议" -> Color(0xFF2196F3) to "建议"
+        "投诉建议" -> Color(0xFFFF9800) to "投诉"
+        "改进建议" -> Color(0xFF9C27B0) to "改进"
+        "一般反馈" -> Color(0xFF607D8B) to "反馈"
+        else -> Color.Gray to type
     }
     
-    Card(
-        colors = CardDefaults.cardColors(
-            containerColor = backgroundColor
-        ),
-        shape = RoundedCornerShape(12.dp)
-    ) {
-        Text(
-            text = when (status) {
-                UserFeedback.STATUS_SUBMITTED -> "已提交"
-                UserFeedback.STATUS_REVIEWING -> "处理中"
-                UserFeedback.STATUS_RESOLVED -> "已解决"
-                UserFeedback.STATUS_CLOSED -> "已关闭"
-                else -> "未知"
-            },
-            color = textColor,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-        )
-    }
+    Text(
+        text = text,
+        color = color,
+        fontSize = 10.sp,
+        modifier = Modifier
+            .background(
+                color.copy(alpha = 0.2f),
+                RoundedCornerShape(8.dp)
+            )
+            .padding(horizontal = 6.dp, vertical = 2.dp)
+    )
 }
 
 /**
- * 类型标签
+ * 反馈状态标签
  */
 @Composable
-private fun TypeChip(type: String) {
-    Card(
-        colors = CardDefaults.cardColors(
-            containerColor = Color(0xFF673AB7).copy(alpha = 0.3f)
-        ),
-        shape = RoundedCornerShape(8.dp)
-    ) {
-        Text(
-            text = when (type) {
-                UserFeedback.TYPE_BUG -> "问题报告"
-                UserFeedback.TYPE_FEATURE -> "功能建议"
-                UserFeedback.TYPE_COMPLAINT -> "投诉建议"
-                UserFeedback.TYPE_SUGGESTION -> "改进建议"
-                UserFeedback.TYPE_GENERAL -> "一般反馈"
-                else -> "其他"
-            },
-            color = Color(0xFF673AB7),
-            fontSize = 10.sp,
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-        )
+private fun FeedbackStatusChip(status: String) {
+    val (color, text) = when (status) {
+        "pending" -> Color(0xFFFF9800) to "待处理"
+        "processing" -> Color(0xFF2196F3) to "处理中"
+        "resolved" -> Color(0xFF4CAF50) to "已解决"
+        "closed" -> Color(0xFF607D8B) to "已关闭"
+        "withdrawn" -> Color(0xFF9E9E9E) to "已撤回"
+        else -> Color.Gray to status
     }
+    
+    Text(
+        text = text,
+        color = color,
+        fontSize = 10.sp,
+        modifier = Modifier
+            .background(
+                color.copy(alpha = 0.2f),
+                RoundedCornerShape(8.dp)
+            )
+            .padding(horizontal = 6.dp, vertical = 2.dp)
+    )
 }
 
 /**
- * 优先级标签
+ * 格式化日期时间
  */
-@Composable
-private fun PriorityChip(priority: String) {
-    val (backgroundColor, textColor) = when (priority) {
-        UserFeedback.PRIORITY_HIGH -> Color(0xFFF44336).copy(alpha = 0.3f) to Color(0xFFF44336)
-        UserFeedback.PRIORITY_NORMAL -> Color(0xFF4CAF50).copy(alpha = 0.3f) to Color(0xFF4CAF50)
-        UserFeedback.PRIORITY_LOW -> Color(0xFF9E9E9E).copy(alpha = 0.3f) to Color(0xFF9E9E9E)
-        else -> Color.Gray.copy(alpha = 0.3f) to Color.Gray
-    }
-    
-    Card(
-        colors = CardDefaults.cardColors(
-            containerColor = backgroundColor
-        ),
-        shape = RoundedCornerShape(8.dp)
-    ) {
-        Text(
-            text = when (priority) {
-                UserFeedback.PRIORITY_HIGH -> "高"
-                UserFeedback.PRIORITY_NORMAL -> "普通"
-                UserFeedback.PRIORITY_LOW -> "低"
-                else -> "普通"
-            },
-            color = textColor,
-            fontSize = 10.sp,
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-        )
+private fun formatDateTime(dateTimeString: String): String {
+    return try {
+        val inputFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSSSS", Locale.getDefault())
+        val outputFormat = SimpleDateFormat("MM-dd HH:mm", Locale.getDefault())
+        val date = inputFormat.parse(dateTimeString)
+        outputFormat.format(date ?: Date())
+    } catch (e: Exception) {
+        // 如果解析失败，尝试其他格式
+        try {
+            val inputFormat2 = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault())
+            val outputFormat = SimpleDateFormat("MM-dd HH:mm", Locale.getDefault())
+            val date = inputFormat2.parse(dateTimeString)
+            outputFormat.format(date ?: Date())
+        } catch (e2: Exception) {
+            // 如果都失败了，返回原始字符串的前10个字符
+            dateTimeString.take(10)
+        }
     }
 }

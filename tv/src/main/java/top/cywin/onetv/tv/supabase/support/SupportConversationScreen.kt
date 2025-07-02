@@ -88,6 +88,8 @@ fun SupportConversationScreen(
         ConversationHeader(
             conversation = uiState.conversationState.conversation,
             isConnected = uiState.conversationState.isConnected,
+            isLoading = uiState.conversationState.isLoading,
+            error = uiState.conversationState.error,
             userRoles = userRoles,
             isAdmin = isAdmin,
             onClose = onClose
@@ -180,6 +182,8 @@ fun SupportConversationScreen(
 private fun ConversationHeader(
     conversation: SupportConversation?,
     isConnected: Boolean,
+    isLoading: Boolean,
+    error: String?,
     userRoles: List<String>,
     isAdmin: Boolean,
     onClose: () -> Unit
@@ -229,6 +233,8 @@ private fun ConversationHeader(
                         .clip(RoundedCornerShape(4.dp))
                         .background(
                             when {
+                                isLoading -> Color.Yellow
+                                error != null -> Color.Red
                                 !isConnected -> Color.Red
                                 conversation?.status == "waiting" -> Color(0xFFFF9800) // Orange
                                 conversation?.status == "open" -> Color.Green
@@ -239,12 +245,21 @@ private fun ConversationHeader(
                 Spacer(modifier = Modifier.width(4.dp))
                 Text(
                     text = when {
-                        !isConnected -> "连接中..."
+                        isLoading -> "连接中..."
+                        error != null -> "连接失败"
+                        !isConnected -> "未连接"
                         conversation?.status == "waiting" -> "等待客服"
                         conversation?.status == "open" -> "客服在线"
                         else -> "未知状态"
                     },
-                    color = Color.Gray,
+                    color = when {
+                        isLoading -> Color.Yellow
+                        error != null -> Color.Red
+                        !isConnected -> Color.Red
+                        conversation?.status == "waiting" -> Color(0xFFFF9800)
+                        conversation?.status == "open" -> Color.Green
+                        else -> Color.Gray
+                    },
                     fontSize = 12.sp
                 )
 

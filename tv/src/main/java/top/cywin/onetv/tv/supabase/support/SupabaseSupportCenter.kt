@@ -583,7 +583,11 @@ private fun SupportContentPanel(
             "chat" -> {
                 // 主内容区域
                 ChatStartContent(
-                    onStartChat = { supportViewModel.showConversation() },
+                    onStartChat = {
+                        // 先启动客服对话连接，然后显示对话界面
+                        supportViewModel.startSupportConversation()
+                        supportViewModel.showConversation()
+                    },
                     supportViewModel = supportViewModel
                 )
             }
@@ -903,6 +907,8 @@ private fun ChatStartContent(
                     ConversationHistoryItem(
                         conversation = conversation,
                         onClick = {
+                            // 先启动客服对话连接，然后显示对话界面
+                            supportViewModel.startSupportConversation()
                             onStartChat()
                         }
                     )
@@ -1061,6 +1067,9 @@ private fun FeedbackStartContent(
     var recentFeedbacks by remember { mutableStateOf<List<UserFeedback>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
 
+    val uiState by supportViewModel.uiState.collectAsState()
+
+    // 初始加载数据
     LaunchedEffect(Unit) {
         supportViewModel.getFeedbackStats { stats ->
             feedbackStats = stats
@@ -1068,6 +1077,21 @@ private fun FeedbackStartContent(
         supportViewModel.getUserFeedbacks { feedbacks ->
             recentFeedbacks = feedbacks
             isLoading = false
+        }
+    }
+
+    // 监听反馈刷新触发器，当删除反馈后自动刷新数据
+    LaunchedEffect(uiState.feedbackRefreshTrigger) {
+        if (uiState.feedbackRefreshTrigger > 0) {
+            Log.d("FeedbackStartContent", "检测到反馈数据变化，刷新反馈列表")
+            isLoading = true
+            supportViewModel.getFeedbackStats { stats ->
+                feedbackStats = stats
+            }
+            supportViewModel.getUserFeedbacks { feedbacks ->
+                recentFeedbacks = feedbacks
+                isLoading = false
+            }
         }
     }
 
@@ -1142,7 +1166,8 @@ private fun FeedbackStartContent(
                     FeedbackForumItem(
                         feedback = feedback,
                         onClick = {
-                            // 这里可以添加查看反馈详情的逻辑
+                            // 点击反馈标题显示详情弹窗
+                            supportViewModel.showFeedbackDetail(feedback)
                         }
                     )
                 }
@@ -1280,6 +1305,7 @@ private fun FeedbackForumItem(
                     UserFeedback.STATUS_REVIEWING -> Color(0xFF2196F3)
                     UserFeedback.STATUS_RESOLVED -> Color(0xFF4CAF50)
                     UserFeedback.STATUS_CLOSED -> Color(0xFF9E9E9E)
+                    UserFeedback.STATUS_WITHDRAWN -> Color(0xFF9E9E9E)
                     else -> Color.Gray
                 },
                 fontSize = 12.sp,
@@ -1371,6 +1397,7 @@ private fun FeedbackHistoryItem(
                             "reviewing" -> Color.Blue.copy(alpha = 0.3f)
                             "submitted" -> Color(0xFFFF9800).copy(alpha = 0.3f)
                             "closed" -> Color.Gray.copy(alpha = 0.3f)
+                            "withdrawn" -> Color.Gray.copy(alpha = 0.3f)
                             else -> Color.Gray.copy(alpha = 0.3f)
                         }
                     ),
@@ -1628,6 +1655,7 @@ private fun MyFeedbackForumItem(
                     UserFeedback.STATUS_REVIEWING -> Color(0xFF2196F3)
                     UserFeedback.STATUS_RESOLVED -> Color(0xFF4CAF50)
                     UserFeedback.STATUS_CLOSED -> Color(0xFF9E9E9E)
+                    UserFeedback.STATUS_WITHDRAWN -> Color(0xFF9E9E9E)
                     else -> Color.Gray
                 },
                 fontSize = 12.sp,
@@ -1721,6 +1749,7 @@ private fun MyFeedbackHistoryItem(
                             "reviewing" -> Color.Blue.copy(alpha = 0.3f)
                             "submitted" -> Color(0xFFFF9800).copy(alpha = 0.3f)
                             "closed" -> Color.Gray.copy(alpha = 0.3f)
+                            "withdrawn" -> Color.Gray.copy(alpha = 0.3f)
                             else -> Color.Gray.copy(alpha = 0.3f)
                         }
                     ),
@@ -2580,13 +2609,28 @@ private fun FeedbackManagementContent(
     var filterStatus by remember { mutableStateOf("all") }
     var searchQuery by remember { mutableStateOf("") }
 
-    // 加载数据
+    val uiState by supportViewModel.uiState.collectAsState()
+
+    // 初始加载数据
     LaunchedEffect(Unit) {
         supportViewModel.getAllFeedbackStats { stats ->
             feedbackStats = stats
         }
         supportViewModel.getAllFeedbacks { feedbacks ->
             feedbackList = feedbacks
+        }
+    }
+
+    // 监听反馈刷新触发器，当删除反馈后自动刷新数据
+    LaunchedEffect(uiState.feedbackRefreshTrigger) {
+        if (uiState.feedbackRefreshTrigger > 0) {
+            Log.d("FeedbackManagementContent", "检测到反馈数据变化，刷新反馈管理列表")
+            supportViewModel.getAllFeedbackStats { stats ->
+                feedbackStats = stats
+            }
+            supportViewModel.getAllFeedbacks { feedbacks ->
+                feedbackList = feedbacks
+            }
         }
     }
 
@@ -3346,6 +3390,8 @@ fun FeedbackDetailDialog(
                                 UserFeedback.STATUS_SUBMITTED -> Color(0xFFFFD700)
                                 UserFeedback.STATUS_REVIEWING -> Color(0xFF2196F3)
                                 UserFeedback.STATUS_RESOLVED -> Color(0xFF4CAF50)
+                                UserFeedback.STATUS_CLOSED -> Color(0xFF9E9E9E)
+                                UserFeedback.STATUS_WITHDRAWN -> Color(0xFF9E9E9E)
                                 else -> Color.Gray
                             },
                             fontSize = 12.sp,

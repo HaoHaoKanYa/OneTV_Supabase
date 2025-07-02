@@ -82,26 +82,41 @@ class SupportViewModel(application: Application) : AndroidViewModel(application)
                     Log.d(TAG, "对话获取成功，设置当前对话ID: ${conversation.id}")
                     _currentConversationId.value = conversation.id
 
-                    // 加载对话消息
-                    Log.d(TAG, "开始加载对话消息...")
-                    val messages = supportRepository.getConversationMessages(conversation.id)
-                    Log.d(TAG, "消息加载结果: ${messages.size} 条消息")
+                    // 更新连接状态为连接中
+                    _uiState.value = _uiState.value.copy(
+                        conversationState = _uiState.value.conversationState.copy(
+                            isLoading = true,
+                            isConnected = false,
+                            error = null,
+                            conversation = conversation
+                        )
+                    )
 
                     // 订阅实时消息
                     Log.d(TAG, "开始订阅实时消息...")
                     try {
                         supportRepository.subscribeToConversationMessages(conversation.id) { updatedMessages ->
                             Log.d(TAG, "收到实时消息更新: ${updatedMessages.size} 条消息")
-                            // 更新UI状态中的消息列表
+                            // 更新UI状态中的消息列表，并设置为已连接
                             _uiState.value = _uiState.value.copy(
                                 conversationState = _uiState.value.conversationState.copy(
-                                    messages = updatedMessages
+                                    messages = updatedMessages,
+                                    isLoading = false,
+                                    isConnected = true,
+                                    error = null
                                 )
                             )
                         }
-                        Log.d(TAG, "实时消息订阅成功")
+                        Log.d(TAG, "实时消息订阅成功，连接状态已更新")
                     } catch (e: Exception) {
                         Log.e(TAG, "实时消息订阅失败", e)
+                        _uiState.value = _uiState.value.copy(
+                            conversationState = _uiState.value.conversationState.copy(
+                                isLoading = false,
+                                isConnected = false,
+                                error = "连接失败: ${e.message}"
+                            )
+                        )
                     }
 
                     // 标记消息为已读
@@ -117,7 +132,7 @@ class SupportViewModel(application: Application) : AndroidViewModel(application)
                     _uiState.value = _uiState.value.copy(
                         conversationState = SupportConversationState(
                             conversation = conversation,
-                            messages = messages,
+                            messages = emptyList(), // 初始为空，实时订阅会更新
                             isLoading = false,
                             isConnected = true,
                             error = null
@@ -126,7 +141,7 @@ class SupportViewModel(application: Application) : AndroidViewModel(application)
                     )
 
                     Log.d(TAG, "=== 客服对话启动成功 ===")
-                    Log.d(TAG, "对话详情: ID=${conversation.id}, 状态=${conversation.status}, 消息数=${messages.size}")
+                    Log.d(TAG, "对话详情: ID=${conversation.id}, 状态=${conversation.status}")
                     Log.d(TAG, "UI状态: isConnected=true, isLoading=false, showConversation=true")
                 } else {
                     Log.e(TAG, "对话获取失败，无法启动客服对话")
@@ -142,17 +157,43 @@ class SupportViewModel(application: Application) : AndroidViewModel(application)
                 Log.e(TAG, "=== 启动客服对话异常 ===", e)
                 Log.e(TAG, "异常详情: ${e.message}")
                 Log.e(TAG, "异常类型: ${e.javaClass.simpleName}")
+
+                val errorMessage = when {
+                    e.message?.contains("timeout", ignoreCase = true) == true ->
+                        "网络连接超时，请检查网络连接后重试"
+                    e.message?.contains("network", ignoreCase = true) == true ->
+                        "网络连接异常，请稍后重试"
+                    else -> "启动客服对话失败: ${e.message}"
+                }
+
                 _uiState.value = _uiState.value.copy(
                     conversationState = _uiState.value.conversationState.copy(
                         isLoading = false,
                         isConnected = false,
-                        error = "启动客服对话失败: ${e.message}"
+                        error = errorMessage
                     )
                 )
             }
         }
     }
-    
+
+    /**
+     * 清理资源
+     */
+    override fun onCleared() {
+        super.onCleared()
+        viewModelScope.launch {
+            try {
+                supportRepository.unsubscribeFromMessages()
+                supportRepository.cleanup()
+                closeCurrentConversation()
+                Log.d(TAG, "ViewModel清理完成")
+            } catch (e: Exception) {
+                Log.e(TAG, "ViewModel清理失败", e)
+            }
+        }
+    }
+
     /**
      * 发送消息
      */
@@ -185,9 +226,18 @@ class SupportViewModel(application: Application) : AndroidViewModel(application)
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "发送消息失败", e)
+
+                val errorMessage = when {
+                    e.message?.contains("timeout", ignoreCase = true) == true ->
+                        "消息发送超时，请检查网络连接后重试"
+                    e.message?.contains("network", ignoreCase = true) == true ->
+                        "网络连接异常，消息发送失败"
+                    else -> "发送消息失败: ${e.message}"
+                }
+
                 _uiState.value = _uiState.value.copy(
                     conversationState = _uiState.value.conversationState.copy(
-                        error = "发送消息失败: ${e.message}"
+                        error = errorMessage
                     )
                 )
             }
@@ -266,10 +316,19 @@ class SupportViewModel(application: Application) : AndroidViewModel(application)
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "提交用户反馈失败", e)
+
+                val errorMessage = when {
+                    e.message?.contains("timeout", ignoreCase = true) == true ->
+                        "反馈提交超时，请检查网络连接后重试"
+                    e.message?.contains("network", ignoreCase = true) == true ->
+                        "网络连接异常，反馈提交失败"
+                    else -> "反馈提交失败: ${e.message}"
+                }
+
                 _uiState.value = _uiState.value.copy(
                     feedbackState = _uiState.value.feedbackState.copy(
                         isLoading = false,
-                        error = "反馈提交失败: ${e.message}"
+                        error = errorMessage
                     )
                 )
             }
@@ -1148,10 +1207,5 @@ class SupportViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    override fun onCleared() {
-        super.onCleared()
-        // 清理资源
-        supportRepository.cleanup()
-        closeCurrentConversation()
-    }
+
 }
