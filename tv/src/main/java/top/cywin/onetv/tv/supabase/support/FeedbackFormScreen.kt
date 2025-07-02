@@ -228,7 +228,7 @@ fun FeedbackFormScreen(
 }
 
 /**
- * 反馈类型选择器 - 左右排列布局
+ * 反馈类型选择器 - 单行左右排列布局
  */
 @Composable
 private fun FeedbackTypeSelector(
@@ -243,54 +243,28 @@ private fun FeedbackTypeSelector(
         UserFeedback.TYPE_GENERAL to "一般反馈"
     )
 
-    // 使用FlowRow实现自动换行的左右排列
-    Column {
-        // 第一行：前3个选项
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly
-        ) {
-            feedbackTypes.take(3).forEach { (type, label) ->
-                FeedbackTypeItem(
-                    type = type,
-                    label = label,
-                    isSelected = selectedType == type,
-                    onSelected = {
-                        Log.d(TAG, "TypeSelector: 用户选择反馈类型 = $type")
-                        onTypeSelected(type)
-                    },
-                    modifier = Modifier.weight(1f)
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // 第二行：后2个选项
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly
-        ) {
-            feedbackTypes.drop(3).forEach { (type, label) ->
-                FeedbackTypeItem(
-                    type = type,
-                    label = label,
-                    isSelected = selectedType == type,
-                    onSelected = {
-                        Log.d(TAG, "TypeSelector: 用户选择反馈类型 = $type")
-                        onTypeSelected(type)
-                    },
-                    modifier = Modifier.weight(1f)
-                )
-            }
-            // 添加空白占位，保持对齐
-            Spacer(modifier = Modifier.weight(1f))
+    // 单行显示所有5个选项
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceEvenly
+    ) {
+        feedbackTypes.forEach { (type, label) ->
+            FeedbackTypeItem(
+                type = type,
+                label = label,
+                isSelected = selectedType == type,
+                onSelected = {
+                    Log.d(TAG, "TypeSelector: 用户选择反馈类型 = $type")
+                    onTypeSelected(type)
+                },
+                modifier = Modifier.weight(1f)
+            )
         }
     }
 }
 
 /**
- * 反馈类型单项组件
+ * 反馈类型单项组件 - 紧凑单行布局
  */
 @Composable
 private fun FeedbackTypeItem(
@@ -306,9 +280,9 @@ private fun FeedbackTypeItem(
                 selected = isSelected,
                 onClick = onSelected
             )
-            .padding(horizontal = 4.dp, vertical = 2.dp),
+            .padding(horizontal = 2.dp, vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.Start
+        horizontalArrangement = Arrangement.Center
     ) {
         RadioButton(
             selected = isSelected,
@@ -317,14 +291,15 @@ private fun FeedbackTypeItem(
                 selectedColor = Color(0xFFFFD700),
                 unselectedColor = Color.Gray
             ),
-            modifier = Modifier.size(20.dp)
+            modifier = Modifier.size(16.dp)
         )
-        Spacer(modifier = Modifier.width(4.dp))
+        Spacer(modifier = Modifier.width(2.dp))
         Text(
             text = label,
             color = Color.White,
-            fontSize = 12.sp,
-            maxLines = 1
+            fontSize = 10.sp,
+            maxLines = 1,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center
         )
     }
 }
