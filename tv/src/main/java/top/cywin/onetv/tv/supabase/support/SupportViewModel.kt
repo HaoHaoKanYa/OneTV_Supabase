@@ -667,6 +667,22 @@ class SupportViewModel(application: Application) : AndroidViewModel(application)
     }
 
     /**
+     * 获取全局用户统计信息（管理员功能）
+     */
+    fun getGlobalUserStats(callback: (Map<String, Any>) -> Unit) {
+        viewModelScope.launch {
+            try {
+                Log.d(TAG, "获取全局用户统计信息")
+                val stats = supportRepository.getGlobalUserStats()
+                callback(stats)
+            } catch (e: Exception) {
+                Log.e(TAG, "获取全局用户统计信息失败", e)
+                callback(emptyMap())
+            }
+        }
+    }
+
+    /**
      * 获取最近用户列表
      */
     fun getRecentUsers(callback: (List<UserProfile>) -> Unit) {

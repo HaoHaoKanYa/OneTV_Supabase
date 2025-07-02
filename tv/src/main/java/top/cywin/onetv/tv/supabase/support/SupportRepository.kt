@@ -1245,6 +1245,73 @@ class SupportRepository {
     }
 
     /**
+     * 获取全局用户统计信息（管理员功能）
+     */
+    suspend fun getGlobalUserStats(): Map<String, Any> = withContext(Dispatchers.IO) {
+        try {
+            Log.d(TAG, "获取全局用户统计信息")
+
+            val currentUser = client.auth.currentUserOrNull()
+            if (currentUser == null) {
+                Log.w(TAG, "用户未登录")
+                return@withContext emptyMap()
+            }
+
+            // 检查管理员权限
+            val isAdmin = checkAdminStatus()
+            if (!isAdmin) {
+                Log.w(TAG, "用户无管理员权限")
+                return@withContext emptyMap()
+            }
+
+            // 获取总用户数
+            val totalUsers = client.from("profiles")
+                .select(columns = Columns.list("userid")) {
+                    // 不添加过滤条件，获取所有用户
+                }
+                .decodeList<JsonObject>()
+                .size
+
+            // 获取VIP用户数（通过user_roles表查询）
+            val vipUsers = client.from("user_roles")
+                .select(columns = Columns.list("user_id")) {
+                    filter {
+                        eq("role_type", "vip")
+                        eq("is_active", true)
+                    }
+                }
+                .decodeList<JsonObject>()
+                .distinctBy { it["user_id"]?.jsonPrimitive?.content }
+                .size
+
+            // 获取管理员用户数（包括admin和super_admin）
+            val adminUsers = client.from("user_roles")
+                .select(columns = Columns.list("user_id")) {
+                    filter {
+                        isIn("role_type", listOf("admin", "super_admin"))
+                        eq("is_active", true)
+                    }
+                }
+                .decodeList<JsonObject>()
+                .distinctBy { it["user_id"]?.jsonPrimitive?.content }
+                .size
+
+            val stats = mapOf(
+                "total" to totalUsers,
+                "vip" to vipUsers,
+                "admin" to adminUsers
+            )
+
+            Log.d(TAG, "全局用户统计: $stats")
+            return@withContext stats
+
+        } catch (e: Exception) {
+            Log.e(TAG, "获取全局用户统计信息失败", e)
+            return@withContext emptyMap()
+        }
+    }
+
+    /**
      * 获取所有用户列表
      */
     suspend fun getAllUsers(limit: Int = 100): List<UserProfile> = withContext(Dispatchers.IO) {
@@ -1258,7 +1325,7 @@ class SupportRepository {
             }
 
             // 获取所有用户资料
-            val users = client.from("profiles")
+            val userProfiles = client.from("profiles")
                 .select(columns = Columns.list(
                     "userid", "username", "email", "created_at", "updated_at", "accountstatus"
                 )) {
@@ -1266,16 +1333,37 @@ class SupportRepository {
                     limit(limit.toLong())
                 }
                 .decodeList<JsonObject>()
-                .map { userJson ->
-                    UserProfile(
-                        id = userJson["userid"]?.jsonPrimitive?.contentOrNull ?: "",
-                        username = userJson["username"]?.jsonPrimitive?.contentOrNull ?: "",
-                        email = userJson["email"]?.jsonPrimitive?.contentOrNull ?: "",
-                        isVip = false, // 需要单独查询VIP状态
-                        roles = listOf("user"), // 需要单独查询角色
-                        createdAt = userJson["created_at"]?.jsonPrimitive?.contentOrNull ?: ""
-                    )
+
+            // 获取所有用户角色信息
+            val allUserRoles = client.from("user_roles")
+                .select(columns = Columns.list("user_id", "role_type")) {
+                    filter {
+                        eq("is_active", true)
+                    }
                 }
+                .decodeList<JsonObject>()
+
+            // 将角色信息按用户ID分组
+            val userRolesMap = allUserRoles.groupBy {
+                it["user_id"]?.jsonPrimitive?.contentOrNull ?: ""
+            }.mapValues { (_, roles) ->
+                roles.mapNotNull { it["role_type"]?.jsonPrimitive?.contentOrNull }
+            }
+
+            // 构建用户列表，包含正确的角色信息
+            val users = userProfiles.map { userJson ->
+                val userId = userJson["userid"]?.jsonPrimitive?.contentOrNull ?: ""
+                val userRoles = userRolesMap[userId] ?: listOf("user")
+
+                UserProfile(
+                    id = userId,
+                    username = userJson["username"]?.jsonPrimitive?.contentOrNull ?: "",
+                    email = userJson["email"]?.jsonPrimitive?.contentOrNull ?: "",
+                    isVip = userRoles.contains("vip"),
+                    roles = userRoles,
+                    createdAt = userJson["created_at"]?.jsonPrimitive?.contentOrNull ?: ""
+                )
+            }
 
             Log.d(TAG, "获取到 ${users.size} 个用户")
             return@withContext users
