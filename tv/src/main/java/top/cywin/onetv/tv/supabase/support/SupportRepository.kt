@@ -1491,6 +1491,7 @@ class SupportRepository {
 
     /**
      * 删除反馈（用户）
+     * 优先使用Edge Function，失败时回退到直接数据库操作
      */
     suspend fun deleteFeedback(feedbackId: String): Boolean = withContext(Dispatchers.IO) {
         try {
@@ -1527,41 +1528,105 @@ class SupportRepository {
                 .size
             Log.d(TAG, "删除前记录数量: $beforeDeleteCount")
 
-            // 使用Edge Function删除反馈
-            executeWithRetry("删除用户反馈") {
-                Log.d(TAG, "开始通过Edge Function删除反馈...")
-                Log.d(TAG, "删除参数: feedbackId=$feedbackId, userId=${currentUser.id}")
+            // 方法1: 尝试使用Edge Function删除反馈
+            var success = false
+            try {
+                Log.d(TAG, "尝试方法1: 通过Edge Function删除反馈...")
 
-                // 构建请求体
-                val requestBody = buildJsonObject {
-                    put("action", "delete_feedback")
-                    put("feedback_id", feedbackId)
+                executeWithRetry("删除用户反馈") {
+                    Log.d(TAG, "开始通过Edge Function删除反馈...")
+                    Log.d(TAG, "删除参数: feedbackId=$feedbackId, userId=${currentUser.id}")
+
+                    // 构建请求体
+                    val requestBody = buildJsonObject {
+                        put("action", "delete_feedback")
+                        put("feedback_id", feedbackId)
+                    }
+                    val requestBodyString = requestBody.toString()
+                    Log.d(TAG, "Edge Function请求体: $requestBodyString")
+
+                    // 使用Edge Function删除反馈
+                    val response = functions.invoke(
+                        function = "support-management",
+                        body = requestBodyString
+                    )
+
+                    val result = response.safeBody<JsonObject>()
+                    Log.d(TAG, "Edge Function删除结果: $result")
+
+                    // 检查删除结果
+                    val edgeSuccess = result["success"]?.jsonPrimitive?.content?.toBoolean() ?: false
+                    if (!edgeSuccess) {
+                        val errorMessage = result["error"]?.jsonPrimitive?.content ?: "删除失败"
+                        Log.e(TAG, "Edge Function删除失败: $errorMessage")
+                        throw Exception("删除失败: $errorMessage")
+                    }
+
+                    Log.d(TAG, "Edge Function删除成功")
+                    true
                 }
-                val requestBodyString = requestBody.toString()
-                Log.d(TAG, "Edge Function请求体: $requestBodyString")
 
-                // 使用Edge Function删除反馈
-                val response = functions.invoke(
-                    function = "support-management",
-                    body = requestBodyString
-                )
+                success = true
+                Log.d(TAG, "Edge Function删除方法成功")
 
-                val result = response.safeBody<JsonObject>()
-                Log.d(TAG, "Edge Function删除结果: $result")
-
-                // 检查删除结果
-                val success = result["success"]?.jsonPrimitive?.content?.toBoolean() ?: false
-                if (!success) {
-                    val errorMessage = result["error"]?.jsonPrimitive?.content ?: "删除失败"
-                    Log.e(TAG, "Edge Function删除失败: $errorMessage")
-                    throw Exception("删除失败: $errorMessage")
-                }
-
-                Log.d(TAG, "Edge Function删除成功")
+            } catch (e: Exception) {
+                Log.w(TAG, "Edge Function删除失败，尝试备用方法: ${e.message}")
+                success = false
             }
 
-            Log.d(TAG, "反馈删除操作完成")
-            return@withContext true
+            // 方法2: 如果Edge Function失败，使用直接数据库删除
+            if (!success) {
+                Log.d(TAG, "尝试方法2: 直接数据库删除反馈...")
+
+                try {
+                    executeWithRetry("直接删除用户反馈") {
+                        Log.d(TAG, "开始直接数据库删除反馈...")
+
+                        // 直接从数据库删除反馈
+                        client.from("user_feedback")
+                            .delete {
+                                filter {
+                                    eq("id", feedbackId)
+                                    eq("user_id", currentUser.id)
+                                }
+                            }
+
+                        Log.d(TAG, "直接数据库删除操作完成")
+                        true
+                    }
+
+                    // 验证直接删除结果
+                    val afterCountDirect = client.from("user_feedback")
+                        .select(Columns.list("id")) {
+                            filter {
+                                eq("id", feedbackId)
+                                eq("user_id", currentUser.id)
+                            }
+                        }
+                        .decodeList<JsonObject>()
+                        .size
+
+                    success = afterCountDirect == 0
+                    if (success) {
+                        Log.d(TAG, "直接数据库删除方法成功，记录已删除")
+                    } else {
+                        Log.e(TAG, "直接数据库删除失败，记录仍然存在，删除后记录数量: $afterCountDirect")
+                    }
+
+                } catch (e: Exception) {
+                    Log.e(TAG, "直接数据库删除失败", e)
+                    success = false
+                }
+            }
+
+            if (success) {
+                Log.d(TAG, "反馈删除成功")
+            } else {
+                Log.e(TAG, "所有删除方法都失败")
+            }
+
+            return@withContext success
+
         } catch (e: Exception) {
             Log.e(TAG, "删除反馈失败", e)
             Log.e(TAG, "异常类型: ${e.javaClass.simpleName}")

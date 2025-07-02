@@ -84,15 +84,29 @@ serve(async (req) => {
     let action = url.searchParams.get('action')
     let requestBody = null
 
+    console.log('请求方法:', req.method)
+    console.log('请求URL:', req.url)
+    console.log('URL参数中的action:', action)
+
     // 如果URL参数中没有action，尝试从请求体中获取
     if (!action) {
       try {
-        requestBody = await req.json()
-        action = requestBody.action
+        const bodyText = await req.text()
+        console.log('原始请求体文本:', bodyText)
+
+        if (bodyText) {
+          requestBody = JSON.parse(bodyText)
+          action = requestBody.action
+          console.log('从请求体解析action:', action, '完整请求体:', requestBody)
+        }
       } catch (e) {
+        console.error('解析请求体失败:', e.message)
         // 如果解析请求体失败，继续使用URL参数
       }
     }
+
+    console.log('最终解析的action:', action)
+    console.log('requestBody:', requestBody)
 
     // 根据操作类型分发请求
     switch (action) {
