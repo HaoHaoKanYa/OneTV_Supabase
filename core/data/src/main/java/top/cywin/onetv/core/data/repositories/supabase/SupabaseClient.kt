@@ -431,7 +431,8 @@ data class AppConfig(
     @SerialName("project_id") val projectId: String,
     @SerialName("api_key") val apiKey: String,
     @SerialName("access_token") val accessToken: String? = null,
+    @SerialName("jwt_secret") val jwtSecret: String? = null,
     @SerialName("is_active") val isActive: Boolean = true,
     @SerialName("created_at") val createdAt: String? = null,
     @SerialName("updated_at") val updatedAt: String? = null
-) 
+)
