@@ -4351,11 +4351,12 @@ fun SupportFullScreenDialogs(
             Card(
                 modifier = Modifier
                     .fillMaxWidth(0.6f)
-                    .fillMaxHeight(0.6f),
+                    .fillMaxHeight(0.95f),
                 colors = CardDefaults.cardColors(
                     containerColor = Color(0xFF1A1A1A).copy(alpha = 0.7f)
                 ),
-                shape = RoundedCornerShape(12.dp)
+                shape = RoundedCornerShape(4.dp),
+                border = BorderStroke(1.dp, Color.Gray.copy(alpha = 0.3f))
             ) {
                 uiState.selectedFeedback?.let { feedback ->
                     AdminReplyDialogContent(
