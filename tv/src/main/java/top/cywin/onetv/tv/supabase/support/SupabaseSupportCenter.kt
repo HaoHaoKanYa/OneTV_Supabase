@@ -4608,7 +4608,7 @@ private fun AdminMessageItem(message: SupportMessage) {
 }
 
 /**
- * 管理员消息输入框
+ * 管理员消息输入框 - 修复焦点丢失问题
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -4618,6 +4618,7 @@ private fun AdminMessageInputField(
     onSendMessage: () -> Unit,
     enabled: Boolean
 ) {
+    val focusRequester = remember { FocusRequester() }
     var showEmojiPicker by remember { mutableStateOf(false) }
 
     Row(
@@ -4627,7 +4628,9 @@ private fun AdminMessageInputField(
         OutlinedTextField(
             value = message,
             onValueChange = onMessageChange,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier
+                .weight(1f)
+                .focusRequester(focusRequester),
             placeholder = {
                 Text(
                     text = if (enabled) "输入回复消息..." else "连接中...",
@@ -4643,7 +4646,7 @@ private fun AdminMessageInputField(
                 cursorColor = Color(0xFFFFD700)
             ),
             shape = RoundedCornerShape(12.dp),
-            maxLines = 3
+            singleLine = true
         )
 
         Spacer(modifier = Modifier.width(8.dp))
