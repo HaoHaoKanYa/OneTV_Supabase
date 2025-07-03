@@ -187,7 +187,7 @@ private fun SupportMenuPanel(
 
     LazyColumn(
         modifier = Modifier
-            .width(320.dp)
+            .width(213.dp)  // 缩减1/3宽度：320dp * 2/3 ≈ 213dp
             .fillMaxHeight()
             .background(
                 brush = Brush.linearGradient(
@@ -198,7 +198,7 @@ private fun SupportMenuPanel(
                     start = Offset(0f, 0f),
                     end = Offset(1000f, 1000f)
                 ),
-                shape = RoundedCornerShape(topEnd = 16.dp, bottomEnd = 16.dp)
+                shape = RoundedCornerShape(16.dp)  // 设置所有角为圆角
             )
             .border(
                 width = 1.dp,
@@ -209,7 +209,7 @@ private fun SupportMenuPanel(
                         Color(0xFFD4AF37)
                     )
                 ),
-                shape = RoundedCornerShape(topEnd = 16.dp, bottomEnd = 16.dp)
+                shape = RoundedCornerShape(16.dp)  // 设置所有角为圆角
             )
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -458,7 +458,7 @@ private fun SupportContentPanel(
                     start = Offset(0f, 0f),
                     end = Offset(1000f, 1000f)
                 ),
-                shape = RoundedCornerShape(topStart = 16.dp, bottomStart = 16.dp)
+                shape = RoundedCornerShape(16.dp)  // 设置右侧区域所有角为圆角
             )
             .border(
                 width = 1.dp,
@@ -469,7 +469,7 @@ private fun SupportContentPanel(
                         Color(0xFFD4AF37)
                     )
                 ),
-                shape = RoundedCornerShape(topStart = 16.dp, bottomStart = 16.dp)
+                shape = RoundedCornerShape(16.dp)  // 设置右侧区域所有角为圆角
             )
             .padding(8.dp)
     ) {
@@ -731,111 +731,109 @@ private fun ChatStartContent(
         }
     }
 
-    // 微信聊天窗口样式布局
-    Column(
+    // 左右分栏布局
+    Row(
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp)
     ) {
-        // 顶部统计信息栏
-        if (conversationStats.isNotEmpty()) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 16.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly
-            ) {
-                StatItem("总对话", conversationStats["total"] ?: 0)
-                StatItem("进行中", conversationStats["open"] ?: 0)
-                StatItem("已完成", conversationStats["closed"] ?: 0)
-            }
-        }
-
-        // 聊天历史区域 - 类似微信聊天记录
-        LazyColumn(
+        // 左侧主内容区域
+        Column(
             modifier = Modifier
                 .weight(1f)
-                .fillMaxWidth()
-                .background(
-                    color = Color(0xFF1A1A1A).copy(alpha = 0.3f),
-                    shape = RoundedCornerShape(12.dp)
-                )
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+                .fillMaxHeight()
         ) {
-            if (isLoading) {
-                item {
-                    Box(
-                        modifier = Modifier.fillMaxWidth(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        CircularProgressIndicator(
-                            color = Color(0xFFFFD700)
+
+            // 聊天历史区域 - 类似微信聊天记录
+            LazyColumn(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .background(
+                        color = Color(0xFF1A1A1A).copy(alpha = 0.3f),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (isLoading) {
+                    item {
+                        Box(
+                            modifier = Modifier.fillMaxWidth(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator(
+                                color = Color(0xFFFFD700)
+                            )
+                        }
+                    }
+                } else if (conversationHistory.isEmpty()) {
+                    item {
+                        Box(
+                            modifier = Modifier.fillMaxWidth(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    text = "暂无对话记录",
+                                    color = Color.Gray,
+                                    fontSize = 16.sp
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "点击右侧按钮开始您的第一次客服对话",
+                                    color = Color.Gray,
+                                    fontSize = 14.sp
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    items(conversationHistory) { conversation ->
+                        ConversationHistoryItem(
+                            conversation = conversation,
+                            onClick = {
+                                // 先启动客服对话连接，然后显示对话界面
+                                supportViewModel.startSupportConversation()
+                                onStartChat()
+                            }
                         )
                     }
                 }
-            } else if (conversationHistory.isEmpty()) {
-                item {
-                    Box(
-                        modifier = Modifier.fillMaxWidth(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Text(
-                                text = "暂无对话记录",
-                                color = Color.Gray,
-                                fontSize = 16.sp
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = "点击下方按钮开始您的第一次客服对话",
-                                color = Color.Gray,
-                                fontSize = 14.sp
-                            )
-                        }
-                    }
-                }
-            } else {
-                items(conversationHistory) { conversation ->
-                    ConversationHistoryItem(
-                        conversation = conversation,
-                        onClick = {
-                            // 先启动客服对话连接，然后显示对话界面
-                            supportViewModel.startSupportConversation()
-                            onStartChat()
-                        }
-                    )
-                }
             }
         }
 
-        // 底部操作区域 - 移动到最下端
-        Row(
+
+        // 分隔线
+        Divider(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .fillMaxHeight()
+                .width(1.dp),
+            color = Color.Gray.copy(alpha = 0.3f)
+        )
+
+        Spacer(modifier = Modifier.width(16.dp))
+
+        // 右侧操作区域 - 垂直排列
+        Column(
+            modifier = Modifier
+                .width(120.dp)
+                .fillMaxHeight(),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // 开始对话按钮
-            Button(
-                onClick = onStartChat,
-                modifier = Modifier
-                    .weight(1f)
-                    .height(48.dp),
-                shape = RoundedCornerShape(24.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFFFFD700)
-                )
-            ) {
-                Text(
-                    text = "💬 开始新对话",
-                    color = Color.Black,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
+            // 统计信息区域 - 改为水平排版
+            if (conversationStats.isNotEmpty()) {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    StatItemHorizontal("总对话", conversationStats["total"] ?: 0)
+                    StatItemHorizontal("进行中", conversationStats["open"] ?: 0)
+                    StatItemHorizontal("已完成", conversationStats["closed"] ?: 0)
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
             }
 
             // 刷新按钮
@@ -848,16 +846,37 @@ private fun ChatStartContent(
                         conversationStats = stats
                     }
                 },
-                modifier = Modifier.height(48.dp),
-                shape = RoundedCornerShape(24.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(36.dp),
+                shape = RoundedCornerShape(18.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = Color(0xFF4285F4).copy(alpha = 0.8f)
                 )
             ) {
                 Text(
-                    text = "🔄",
+                    text = "🔄 刷新",
                     color = Color.White,
-                    fontSize = 16.sp
+                    fontSize = 11.sp
+                )
+            }
+
+            // 开始新对话按钮
+            Button(
+                onClick = onStartChat,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(36.dp),
+                shape = RoundedCornerShape(18.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFFFFD700)
+                )
+            ) {
+                Text(
+                    text = "💬 开始新对话",
+                    color = Color.Black,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold
                 )
             }
         }
@@ -884,6 +903,93 @@ private fun StatItem(label: String, value: Int) {
             fontSize = 18.sp,
             fontWeight = FontWeight.Bold
         )
+    }
+}
+
+/**
+ * 垂直统计项组件 - 用于右侧垂直排列
+ */
+@Composable
+private fun StatItemVertical(label: String, value: Int) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Text(
+            text = label,
+            color = Color.White.copy(alpha = 0.7f),
+            fontSize = 12.sp,
+            textAlign = TextAlign.Center
+        )
+        Text(
+            text = value.toString(),
+            color = Color(0xFFFFD700),
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center
+        )
+    }
+}
+
+/**
+ * 水平统计项组件 - 用于左右排版
+ */
+@Composable
+private fun StatItemHorizontal(label: String, value: Int) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Text(
+            text = label,
+            color = Color.White.copy(alpha = 0.7f),
+            fontSize = 12.sp
+        )
+        Text(
+            text = value.toString(),
+            color = Color(0xFFFFD700),
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold
+        )
+    }
+}
+
+/**
+ * 二列统计组件 - 用于反馈管理的特殊布局
+ */
+@Composable
+private fun StatItemTwoColumn(
+    label1: String, value1: Int,
+    label2: String, value2: Int
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        // 左列
+        Column(
+            modifier = Modifier.weight(1f),
+            horizontalAlignment = Alignment.Start
+        ) {
+            Text(
+                text = "$label1 $value1",
+                color = Color.White.copy(alpha = 0.7f),
+                fontSize = 11.sp
+            )
+        }
+
+        // 右列
+        Column(
+            modifier = Modifier.weight(1f),
+            horizontalAlignment = Alignment.End
+        ) {
+            Text(
+                text = "$label2 $value2",
+                color = Color.White.copy(alpha = 0.7f),
+                fontSize = 11.sp
+            )
+        }
     }
 }
 
@@ -990,109 +1096,108 @@ private fun FeedbackStartContent(
         }
     }
 
-    // 论坛版块样式布局
-    Column(
+    // 左右分栏布局
+    Row(
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp)
     ) {
-        // 顶部统计信息栏
-        if (feedbackStats.isNotEmpty()) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 16.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly
-            ) {
-                StatItem("已提交", feedbackStats["total"] ?: 0)
-                StatItem("处理中", feedbackStats["reviewing"] ?: 0)
-                StatItem("已解决", feedbackStats["resolved"] ?: 0)
-            }
-        }
-
-        // 反馈帖子列表区域 - 论坛样式
-        LazyColumn(
+        // 左侧主内容区域
+        Column(
             modifier = Modifier
                 .weight(1f)
-                .fillMaxWidth()
-                .background(
-                    color = Color(0xFF1A1A1A).copy(alpha = 0.3f),
-                    shape = RoundedCornerShape(12.dp)
-                )
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+                .fillMaxHeight()
         ) {
-            if (isLoading) {
-                item {
-                    Box(
-                        modifier = Modifier.fillMaxWidth(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        CircularProgressIndicator(
-                            color = Color(0xFFFFD700)
+
+            // 反馈帖子列表区域 - 论坛样式
+            LazyColumn(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .background(
+                        color = Color(0xFF1A1A1A).copy(alpha = 0.3f),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (isLoading) {
+                    item {
+                        Box(
+                            modifier = Modifier.fillMaxWidth(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator(
+                                color = Color(0xFFFFD700)
+                            )
+                        }
+                    }
+                } else if (recentFeedbacks.isEmpty()) {
+                    item {
+                        Box(
+                            modifier = Modifier.fillMaxWidth(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    text = "暂无反馈记录",
+                                    color = Color.Gray,
+                                    fontSize = 16.sp
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "点击右侧按钮提交您的第一个反馈",
+                                    color = Color.Gray,
+                                    fontSize = 14.sp
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    items(recentFeedbacks) { feedback ->
+                        FeedbackForumItem(
+                            feedback = feedback,
+                            onClick = {
+                                // 点击反馈标题显示详情弹窗
+                                supportViewModel.showFeedbackDetail(feedback)
+                            }
                         )
                     }
                 }
-            } else if (recentFeedbacks.isEmpty()) {
-                item {
-                    Box(
-                        modifier = Modifier.fillMaxWidth(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Text(
-                                text = "暂无反馈记录",
-                                color = Color.Gray,
-                                fontSize = 16.sp
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = "点击下方按钮提交您的第一个反馈",
-                                color = Color.Gray,
-                                fontSize = 14.sp
-                            )
-                        }
-                    }
-                }
-            } else {
-                items(recentFeedbacks) { feedback ->
-                    FeedbackForumItem(
-                        feedback = feedback,
-                        onClick = {
-                            // 点击反馈标题显示详情弹窗
-                            supportViewModel.showFeedbackDetail(feedback)
-                        }
-                    )
-                }
             }
         }
 
-        // 操作按钮区域 - 移动到最下端
-        Row(
+
+        // 分隔线
+        Divider(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                .fillMaxHeight()
+                .width(1.dp),
+            color = Color.Gray.copy(alpha = 0.3f)
+        )
+
+        Spacer(modifier = Modifier.width(16.dp))
+
+        // 右侧操作区域 - 垂直排列
+        Column(
+            modifier = Modifier
+                .width(120.dp)
+                .fillMaxHeight(),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // 我要反馈按钮
-            Button(
-                onClick = onStartFeedback,
-                modifier = Modifier
-                    .weight(1f)
-                    .height(48.dp),
-                shape = RoundedCornerShape(24.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFFFFD700)
-                )
-            ) {
-                Text(
-                    text = "📝 我要反馈",
-                    color = Color.Black,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
+            // 统计信息区域 - 改为水平排版
+            if (feedbackStats.isNotEmpty()) {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    StatItemHorizontal("已提交", feedbackStats["total"] ?: 0)
+                    StatItemHorizontal("处理中", feedbackStats["reviewing"] ?: 0)
+                    StatItemHorizontal("已解决", feedbackStats["resolved"] ?: 0)
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
             }
 
             // 刷新按钮
@@ -1105,16 +1210,37 @@ private fun FeedbackStartContent(
                         recentFeedbacks = feedbacks
                     }
                 },
-                modifier = Modifier.height(48.dp),
-                shape = RoundedCornerShape(24.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(36.dp),
+                shape = RoundedCornerShape(18.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = Color(0xFF4285F4).copy(alpha = 0.8f)
                 )
             ) {
                 Text(
-                    text = "🔄",
+                    text = "🔄 刷新",
                     color = Color.White,
-                    fontSize = 16.sp
+                    fontSize = 11.sp
+                )
+            }
+
+            // 我要反馈按钮
+            Button(
+                onClick = onStartFeedback,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(36.dp),
+                shape = RoundedCornerShape(18.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFFFFD700)
+                )
+            ) {
+                Text(
+                    text = "📝 我要反馈",
+                    color = Color.Black,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold
                 )
             }
         }
@@ -1368,25 +1494,18 @@ private fun MyFeedbackContent(
         }
     }
 
-    // 论坛版块样式布局
-    Column(
+    // 左右分栏布局
+    Row(
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp)
     ) {
-        // 顶部统计信息栏
-        if (feedbackStats.isNotEmpty()) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 16.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly
-            ) {
-                StatItem("总数", feedbackStats["total"] ?: 0)
-                StatItem("处理中", feedbackStats["reviewing"] ?: 0)
-                StatItem("已解决", feedbackStats["resolved"] ?: 0)
-            }
-        }
+        // 左侧主内容区域
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxHeight()
+        ) {
 
         // 我的反馈帖子列表区域 - 论坛样式
         LazyColumn(
@@ -1400,77 +1519,83 @@ private fun MyFeedbackContent(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            if (isLoading) {
-                item {
-                    Box(
-                        modifier = Modifier.fillMaxWidth(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        CircularProgressIndicator(
-                            color = Color(0xFFFFD700)
+                if (isLoading) {
+                    item {
+                        Box(
+                            modifier = Modifier.fillMaxWidth(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator(
+                                color = Color(0xFFFFD700)
+                            )
+                        }
+                    }
+                } else if (myFeedbacks.isEmpty()) {
+                    item {
+                        Box(
+                            modifier = Modifier.fillMaxWidth(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    text = "暂无反馈记录",
+                                    color = Color.Gray,
+                                    fontSize = 16.sp
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "您还没有提交过任何反馈",
+                                    color = Color.Gray,
+                                    fontSize = 14.sp
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    items(myFeedbacks) { feedback ->
+                        MyFeedbackForumItem(
+                            feedback = feedback,
+                            onClick = {
+                                // 点击帖子显示详情弹窗
+                                supportViewModel.showFeedbackDetail(feedback)
+                            }
                         )
                     }
-                }
-            } else if (myFeedbacks.isEmpty()) {
-                item {
-                    Box(
-                        modifier = Modifier.fillMaxWidth(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Text(
-                                text = "暂无反馈记录",
-                                color = Color.Gray,
-                                fontSize = 16.sp
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = "您还没有提交过任何反馈",
-                                color = Color.Gray,
-                                fontSize = 14.sp
-                            )
-                        }
-                    }
-                }
-            } else {
-                items(myFeedbacks) { feedback ->
-                    MyFeedbackForumItem(
-                        feedback = feedback,
-                        onClick = {
-                            // 点击帖子显示详情弹窗
-                            supportViewModel.showFeedbackDetail(feedback)
-                        }
-                    )
                 }
             }
         }
 
-        // 操作按钮区域 - 移动到最下端
-        Row(
+
+        // 分隔线
+        Divider(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                .fillMaxHeight()
+                .width(1.dp),
+            color = Color.Gray.copy(alpha = 0.3f)
+        )
+
+        Spacer(modifier = Modifier.width(16.dp))
+
+        // 右侧操作区域 - 垂直排列
+        Column(
+            modifier = Modifier
+                .width(120.dp)
+                .fillMaxHeight(),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // 查看全部按钮
-            Button(
-                onClick = onViewFeedback,
-                modifier = Modifier
-                    .weight(1f)
-                    .height(48.dp),
-                shape = RoundedCornerShape(24.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFFFFD700)
-                )
-            ) {
-                Text(
-                    text = "📋 查看全部反馈",
-                    color = Color.Black,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
+            // 统计信息区域 - 改为水平排版
+            if (feedbackStats.isNotEmpty()) {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    StatItemHorizontal("总数", feedbackStats["total"] ?: 0)
+                    StatItemHorizontal("处理中", feedbackStats["reviewing"] ?: 0)
+                    StatItemHorizontal("已解决", feedbackStats["resolved"] ?: 0)
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
             }
 
             // 刷新按钮
@@ -1483,16 +1608,37 @@ private fun MyFeedbackContent(
                         myFeedbacks = feedbacks
                     }
                 },
-                modifier = Modifier.height(48.dp),
-                shape = RoundedCornerShape(24.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(36.dp),
+                shape = RoundedCornerShape(18.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = Color(0xFF4285F4).copy(alpha = 0.8f)
                 )
             ) {
                 Text(
-                    text = "🔄",
+                    text = "🔄 刷新",
                     color = Color.White,
-                    fontSize = 16.sp
+                    fontSize = 11.sp
+                )
+            }
+
+            // 查看全部反馈按钮
+            Button(
+                onClick = onViewFeedback,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(36.dp),
+                shape = RoundedCornerShape(18.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFFFFD700)
+                )
+            ) {
+                Text(
+                    text = "📋 查看全部反馈",
+                    color = Color.Black,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold
                 )
             }
         }
@@ -1744,160 +1890,75 @@ private fun UserManagementContent(
         }
     }
 
-    // 优化的用户管理布局 - 最大化利用空间
-    Column(
+    // 左右分栏布局
+    Row(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 8.dp, vertical = 4.dp) // 减少内边距
+            .padding(16.dp)
     ) {
-        // 顶部统计信息栏 - 总用户-VIP用户-管理员-刷新-搜索框
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 4.dp), // 进一步减少底部间距
-            horizontalArrangement = Arrangement.spacedBy(6.dp), // 减少间距
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // 统计信息
-            if (userStats.isNotEmpty()) {
-                StatItem("总用户", (userStats["total"] as? Int) ?: 0)
-                StatItem("VIP用户", (userStats["vip"] as? Int) ?: 0)
-                StatItem("管理员", (userStats["admin"] as? Int) ?: 0)
-            }
-
-            // 刷新按钮 - 添加TV端光标跟随效果
-            var refreshFocused by remember { mutableStateOf(false) }
-            IconButton(
-                onClick = { loadData() },
-                modifier = Modifier
-                    .size(32.dp)
-                    .onFocusChanged { refreshFocused = it.isFocused }
-                    .border(
-                        width = if (refreshFocused) 2.dp else 0.dp,
-                        color = Color(0xFFFFD700),
-                        shape = CircleShape
-                    )
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Refresh,
-                    contentDescription = "刷新",
-                    tint = if (refreshFocused) Color(0xFFFFD700) else Color.White,
-                    modifier = Modifier.size(20.dp)
-                )
-            }
-
-            // 搜索图标按钮
-            var searchFocused by remember { mutableStateOf(false) }
-            var showSearchField by remember { mutableStateOf(false) }
-
-            IconButton(
-                onClick = { showSearchField = !showSearchField },
-                modifier = Modifier
-                    .size(32.dp)
-                    .onFocusChanged { searchFocused = it.isFocused }
-                    .border(
-                        width = if (searchFocused) 2.dp else 0.dp,
-                        color = Color(0xFFFFD700),
-                        shape = CircleShape
-                    )
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Search,
-                    contentDescription = "搜索",
-                    tint = if (searchFocused) Color(0xFFFFD700) else Color.White,
-                    modifier = Modifier.size(20.dp)
-                )
-            }
-        }
-
-        // 可展开的搜索框
-        AnimatedVisibility(
-            visible = showSearchField,
-            enter = slideInVertically() + expandVertically(),
-            exit = slideOutVertically() + shrinkVertically()
-        ) {
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it },
-                placeholder = {
-                    Text(
-                        "搜索用户...",
-                        color = Color.Gray,
-                        fontSize = 12.sp
-                    )
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(40.dp)
-                    .padding(bottom = 4.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = Color(0xFFFFD700),
-                    unfocusedBorderColor = Color.Gray,
-                    focusedTextColor = Color.White,
-                    unfocusedTextColor = Color.White
-                ),
-                singleLine = true,
-                textStyle = TextStyle(fontSize = 12.sp),
-                shape = RoundedCornerShape(20.dp)
-            )
-        }
-
-        // 用户列表表头 - 紧凑设计
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(
-                    color = Color(0xFF2C3E50).copy(alpha = 0.3f),
-                    shape = RoundedCornerShape(6.dp)
-                )
-                .padding(horizontal = 8.dp, vertical = 6.dp), // 减少内边距
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "用户名",
-                color = Color(0xFFFFD700),
-                fontSize = 12.sp, // 减小字体
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.weight(2f)
-            )
-            Text(
-                text = "邮箱",
-                color = Color(0xFFFFD700),
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.weight(2.5f)
-            )
-            Text(
-                text = "角色",
-                color = Color(0xFFFFD700),
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.weight(1.5f)
-            )
-            Text(
-                text = "操作",
-                color = Color(0xFFFFD700),
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.weight(1f)
-            )
-        }
-
-        Spacer(modifier = Modifier.height(4.dp))
-
-        // 用户列表区域 - 最大化利用空间
-        LazyColumn(
+        // 左侧主内容区域
+        Column(
             modifier = Modifier
                 .weight(1f)
-                .fillMaxWidth()
-                .background(
-                    color = Color(0xFF1A1A1A).copy(alpha = 0.2f),
-                    shape = RoundedCornerShape(8.dp)
-                )
-                .padding(4.dp), // 减少内边距
-            verticalArrangement = Arrangement.spacedBy(2.dp) // 减少间距
+                .fillMaxHeight()
         ) {
+
+            // 用户列表区域
+            LazyColumn(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .background(
+                        color = Color(0xFF1A1A1A).copy(alpha = 0.3f),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+
+                // 用户列表表头 - 紧凑设计
+                item {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(
+                                color = Color(0xFF2C3E50).copy(alpha = 0.3f),
+                                shape = RoundedCornerShape(6.dp)
+                            )
+                            .padding(horizontal = 8.dp, vertical = 6.dp), // 减少内边距
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "用户名",
+                            color = Color(0xFFFFD700),
+                            fontSize = 12.sp, // 减小字体
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.weight(2f)
+                        )
+                        Text(
+                            text = "邮箱",
+                            color = Color(0xFFFFD700),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.weight(2.5f)
+                        )
+                        Text(
+                            text = "角色",
+                            color = Color(0xFFFFD700),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.weight(1.5f)
+                        )
+                        Text(
+                            text = "操作",
+                            color = Color(0xFFFFD700),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
             if (isLoading) {
                 item {
                     Box(
@@ -1940,6 +2001,101 @@ private fun UserManagementContent(
                         }
                     )
                 }
+            }
+            }
+        }
+
+        // 分隔线
+        Divider(
+            modifier = Modifier
+                .fillMaxHeight()
+                .width(1.dp),
+            color = Color.Gray.copy(alpha = 0.3f)
+        )
+
+        Spacer(modifier = Modifier.width(16.dp))
+
+        // 右侧操作区域 - 垂直排列
+        Column(
+            modifier = Modifier
+                .width(120.dp)
+                .fillMaxHeight(),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            // 统计信息区域 - 改为水平排版
+            if (userStats.isNotEmpty()) {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    StatItemHorizontal("总用户", (userStats["total"] as? Int) ?: 0)
+                    StatItemHorizontal("VIP用户", (userStats["vip"] as? Int) ?: 0)
+                    StatItemHorizontal("管理员", (userStats["admin"] as? Int) ?: 0)
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+
+            // 刷新按钮
+            Button(
+                onClick = { loadData() },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(36.dp),
+                shape = RoundedCornerShape(18.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF4285F4).copy(alpha = 0.8f)
+                )
+            ) {
+                Text(
+                    text = "🔄 刷新",
+                    color = Color.White,
+                    fontSize = 11.sp
+                )
+            }
+
+            // 搜索按钮
+            Button(
+                onClick = { showSearchField = !showSearchField },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(36.dp),
+                shape = RoundedCornerShape(18.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF34A853).copy(alpha = 0.8f)
+                )
+            ) {
+                Text(
+                    text = "🔍 搜索",
+                    color = Color.White,
+                    fontSize = 11.sp
+                )
+            }
+
+            // 搜索框
+            if (showSearchField) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = {
+                        Text(
+                            "搜索用户...",
+                            color = Color.Gray,
+                            fontSize = 10.sp
+                        )
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(35.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Color(0xFFFFD700),
+                        unfocusedBorderColor = Color.Gray,
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White
+                    ),
+                    singleLine = true,
+                    textStyle = TextStyle(fontSize = 10.sp),
+                    shape = RoundedCornerShape(17.dp)
+                )
             }
         }
     }
@@ -2730,101 +2886,33 @@ private fun FeedbackManagementContent(
         }
     }
 
-    // 论坛版块样式布局
-    Column(
+    // 左右分栏布局
+    Row(
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp)
     ) {
-        // 顶部统计信息栏
-        if (feedbackStats.isNotEmpty()) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 16.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly
-            ) {
-                StatItem("总反馈", (feedbackStats["total"] as? Int) ?: 0)
-                StatItem("待处理", (feedbackStats["submitted"] as? Int) ?: 0)
-                StatItem("处理中", (feedbackStats["reviewing"] as? Int) ?: 0)
-                StatItem("已解决", (feedbackStats["resolved"] as? Int) ?: 0)
-            }
-        }
-
-        // 操作和筛选按钮区域
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            // 状态筛选按钮
-            val statusOptions = listOf(
-                "all" to "全部",
-                "submitted" to "待处理",
-                "reviewing" to "处理中",
-                "resolved" to "已解决",
-                "closed" to "已关闭"
-            )
-
-            statusOptions.forEach { (status, label) ->
-                Button(
-                    onClick = { filterStatus = status },
-                    modifier = Modifier.height(40.dp),
-                    shape = RoundedCornerShape(20.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (filterStatus == status)
-                            Color(0xFFFFD700)
-                        else
-                            Color(0xFF4285F4).copy(alpha = 0.6f)
-                    )
-                ) {
-                    Text(
-                        text = label,
-                        color = if (filterStatus == status) Color.Black else Color.White,
-                        fontSize = 12.sp
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.weight(1f))
-
-            // 刷新按钮
-            Button(
-                onClick = {
-                    supportViewModel.getAllFeedbackStats { stats ->
-                        feedbackStats = stats
-                    }
-                    supportViewModel.getAllFeedbacks { feedbacks ->
-                        feedbackList = feedbacks
-                    }
-                },
-                modifier = Modifier.height(40.dp),
-                shape = RoundedCornerShape(20.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF4285F4).copy(alpha = 0.8f)
-                )
-            ) {
-                Text(
-                    text = "🔄",
-                    color = Color.White,
-                    fontSize = 14.sp
-                )
-            }
-        }
-
-        // 反馈帖子列表区域 - 论坛样式
-        LazyColumn(
+        // 左侧主内容区域
+        Column(
             modifier = Modifier
                 .weight(1f)
-                .fillMaxWidth()
-                .background(
-                    color = Color(0xFF1A1A1A).copy(alpha = 0.3f),
-                    shape = RoundedCornerShape(12.dp)
-                )
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+                .fillMaxHeight()
         ) {
+
+
+
+            // 反馈帖子列表区域 - 论坛样式
+            LazyColumn(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .background(
+                        color = Color(0xFF1A1A1A).copy(alpha = 0.3f),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
             if (filteredFeedbacks.isEmpty()) {
                 item {
                     Box(
@@ -2861,6 +2949,94 @@ private fun FeedbackManagementContent(
                             supportViewModel.showFeedbackDetail(feedback)
                         }
                     )
+                }
+            }
+            }
+        }
+
+        // 分隔线
+        Divider(
+            modifier = Modifier
+                .fillMaxHeight()
+                .width(1.dp),
+            color = Color.Gray.copy(alpha = 0.3f)
+        )
+
+        Spacer(modifier = Modifier.width(16.dp))
+
+        // 右侧操作区域 - 垂直排列
+        Column(
+            modifier = Modifier
+                .width(120.dp)
+                .fillMaxHeight(),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            // 统计信息区域 - 改为二列排版
+            if (feedbackStats.isNotEmpty()) {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    StatItemTwoColumn(
+                        "总反馈", (feedbackStats["total"] as? Int) ?: 0,
+                        "处理中", (feedbackStats["reviewing"] as? Int) ?: 0
+                    )
+                    StatItemTwoColumn(
+                        "待处理", (feedbackStats["submitted"] as? Int) ?: 0,
+                        "已解决", (feedbackStats["resolved"] as? Int) ?: 0
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+
+            // 筛选按钮组 - 改为二列排版
+            val statusOptions = listOf(
+                listOf("all" to "全部", "resolved" to "已解决"),
+                listOf("submitted" to "待处理", "closed" to "已关闭"),
+                listOf("reviewing" to "处理中", "refresh" to "刷新")
+            )
+
+            statusOptions.forEach { rowOptions ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    rowOptions.forEach { (status, label) ->
+                        Button(
+                            onClick = {
+                                if (status == "refresh") {
+                                    supportViewModel.getAllFeedbackStats { stats ->
+                                        feedbackStats = stats
+                                    }
+                                    supportViewModel.getAllFeedbacks { feedbacks ->
+                                        feedbackList = feedbacks
+                                    }
+                                } else {
+                                    filterStatus = status
+                                }
+                            },
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(28.dp),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (status == "refresh") {
+                                    Color(0xFF4285F4).copy(alpha = 0.8f)
+                                } else if (filterStatus == status) {
+                                    Color(0xFFFFD700)
+                                } else {
+                                    Color(0xFF4285F4).copy(alpha = 0.6f)
+                                }
+                            )
+                        ) {
+                            Text(
+                                text = if (status == "refresh") "🔄" else label,
+                                color = if (status == "refresh" || filterStatus != status) Color.White else Color.Black,
+                                fontSize = 9.sp,
+                                fontWeight = if (filterStatus == status) FontWeight.Bold else FontWeight.Normal
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -2917,242 +3093,133 @@ fun SupportStatItem(
     }
 }
 
+
 /**
- * 客服工作台概览
+ * 客服工作台内容
  */
 @Composable
-fun SupportDeskOverview(stats: Map<String, Any>) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        Text(
-            text = "工作台概览",
-            color = Color(0xFFFFD700),
-            fontSize = 18.sp,
-            fontWeight = FontWeight.SemiBold
-        )
+fun SupportDeskContent(
+    supportViewModel: SupportViewModel
+) {
+    var deskStats by remember { mutableStateOf<Map<String, Any>>(emptyMap()) }
+    var pendingConversations by remember { mutableStateOf<List<SupportConversationDisplay>>(emptyList()) }
+    var recentFeedbacks by remember { mutableStateOf<List<UserFeedback>>(emptyList()) }
+    var selectedTab by remember { mutableStateOf("overview") }
 
-        // 统计信息
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(3),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            item {
-                SupportStatItem(
-                    title = "待处理对话",
-                    value = (stats["pending_conversations"] as? Int)?.toString() ?: "0",
-                    icon = "💬",
-                    color = Color(0xFFFF6B6B)
-                )
+    var isLoading by remember { mutableStateOf(true) }
+    var loadError by remember { mutableStateOf<String?>(null) }
+
+    // 数据加载
+    LaunchedEffect(Unit) {
+        try {
+            supportViewModel.getSupportDeskStats { stats ->
+                deskStats = stats
             }
-            item {
-                SupportStatItem(
-                    title = "今日处理",
-                    value = (stats["today_handled"] as? Int)?.toString() ?: "0",
-                    icon = "✅",
-                    color = Color(0xFF4ECDC4)
-                )
+            supportViewModel.getPendingConversations { conversations ->
+                pendingConversations = conversations
             }
-            item {
-                SupportStatItem(
-                    title = "平均响应时间",
-                    value = "${(stats["avg_response_time"] as? Int) ?: 0}分钟",
-                    icon = "⏱️",
-                    color = Color(0xFFFFD93D)
-                )
+            supportViewModel.getRecentFeedbacks { feedbacks ->
+                recentFeedbacks = feedbacks
+                isLoading = false
             }
+        } catch (e: Exception) {
+            loadError = "加载数据失败: ${e.message}"
+            isLoading = false
         }
     }
-}
 
-/**
- * 客服工作台对话管理
- */
-@Composable
-fun SupportDeskConversations(
-    conversations: List<SupportConversationDisplay>,
-    onTakeOver: (String) -> Unit,
-    onEndConversation: (String) -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        Text(
-            text = "对话管理",
-            color = Color(0xFFFFD700),
-            fontSize = 18.sp,
-            fontWeight = FontWeight.SemiBold
-        )
-
-        LazyColumn(
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+    if (isLoading) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
         ) {
-            items(conversations) { conversation ->
-                ConversationItem(
-                    conversation = conversation,
-                    onTakeOver = { onTakeOver(conversation.id) },
-                    onEndConversation = { onEndConversation(conversation.id) }
-                )
-            }
-
-            if (conversations.isEmpty()) {
-                item {
-                    Box(
-                        modifier = Modifier.fillMaxWidth(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "暂无待处理对话",
-                            color = Color.Gray,
-                            fontSize = 16.sp
-                        )
-                    }
-                }
-            }
+            CircularProgressIndicator(color = Color(0xFFFFD700))
         }
+        return
     }
-}
 
-
-
-/**
- * 客服工作台反馈处理
- */
-@Composable
-fun SupportDeskFeedbacks(
-    feedbacks: List<UserFeedback>,
-    onReplyFeedback: (String, String) -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        Text(
-            text = "反馈处理 (${feedbacks.size})",
-            color = Color(0xFFFFD700),
-            fontSize = 18.sp,
-            fontWeight = FontWeight.SemiBold
-        )
-
-        LazyColumn(
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+    if (loadError != null) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
         ) {
-            items(feedbacks) { feedback ->
-                FeedbackItem(
-                    feedback = feedback,
-                    onReply = {
-                        onReplyFeedback(feedback.id, "回复内容")
-                    }
-                )
-            }
-
-            if (feedbacks.isEmpty()) {
-                item {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(40.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "暂无待处理反馈",
-                            color = Color.White.copy(alpha = 0.6f),
-                            fontSize = 16.sp
-                        )
-                    }
-                }
-            }
+            Text(
+                text = loadError!!,
+                color = Color.Red,
+                fontSize = 16.sp
+            )
         }
+        return
     }
-}
 
-/**
- * 对话项组件
- */
-@Composable
-fun ConversationItem(
-    conversation: SupportConversationDisplay,
-    onTakeOver: () -> Unit,
-    onEndConversation: () -> Unit
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = Color(0xFF2C3E50).copy(alpha = 0.3f)
-        ),
-        shape = RoundedCornerShape(8.dp)
+    // 左右分栏布局
+    Row(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp)
     ) {
+        // 左侧主内容区域
         Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
+                .weight(1f)
+                .fillMaxHeight()
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "用户: ${conversation.userId.take(8)}...",
-                    color = Color.White,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium
-                )
-                Text(
-                    text = conversation.status,
-                    color = when (conversation.status) {
-                        "waiting" -> Color(0xFFF39C12)
-                        "active" -> Color(0xFF27AE60)
-                        else -> Color.Gray
-                    },
-                    fontSize = 12.sp
-                )
+            when (selectedTab) {
+                "overview" -> SupportDeskOverview(deskStats)
+                "conversations" -> ConversationManagement(pendingConversations)
+                "feedbacks" -> FeedbackProcessing(recentFeedbacks)
             }
+        }
 
-            Spacer(modifier = Modifier.height(8.dp))
+        // 分隔线
+        Divider(
+            modifier = Modifier
+                .fillMaxHeight()
+                .width(1.dp),
+            color = Color.Gray.copy(alpha = 0.3f)
+        )
 
-            Text(
-                text = "最后消息: ${conversation.lastMessage}",
-                color = Color.White.copy(alpha = 0.8f),
-                fontSize = 12.sp,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
+        Spacer(modifier = Modifier.width(16.dp))
+
+        // 右侧操作区域 - 垂直居中三个按钮
+        Column(
+            modifier = Modifier
+                .width(120.dp)
+                .fillMaxHeight(),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            val tabs = listOf(
+                "overview" to "概览",
+                "conversations" to "对话管理",
+                "feedbacks" to "反馈处理"
             )
 
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
+            tabs.forEach { (tabId, tabName) ->
                 Button(
-                    onClick = onTakeOver,
+                    onClick = { selectedTab = tabId },
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF4285F4)
+                        containerColor = if (selectedTab == tabId)
+                            Color(0xFFFFD700)
+                        else Color(0xFF4285F4).copy(alpha = 0.6f)
                     ),
-                    shape = RoundedCornerShape(6.dp),
-                    modifier = Modifier.weight(1f)
+                    shape = RoundedCornerShape(18.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(36.dp)
                 ) {
-                    Text("接管", color = Color.White, fontSize = 12.sp)
+                    Text(
+                        text = tabName,
+                        color = if (selectedTab == tabId) Color.Black else Color.White,
+                        fontSize = 11.sp,
+                        fontWeight = if (selectedTab == tabId) FontWeight.SemiBold else FontWeight.Normal,
+                        textAlign = TextAlign.Center
+                    )
                 }
-                Button(
-                    onClick = onEndConversation,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFFE74C3C)
-                    ),
-                    shape = RoundedCornerShape(6.dp),
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text("结束", color = Color.White, fontSize = 12.sp)
+
+                // 添加按钮间距
+                if (tabId != "feedbacks") {
+                    Spacer(modifier = Modifier.height(8.dp))
                 }
             }
         }
@@ -3160,7 +3227,7 @@ fun ConversationItem(
 }
 
 /**
- * 反馈项组件 - 管理员版简洁单行样式
+ * 反馈项组件
  */
 @Composable
 fun FeedbackItem(
@@ -3177,7 +3244,6 @@ fun FeedbackItem(
         ),
         shape = RoundedCornerShape(8.dp)
     ) {
-        // 单行显示：标题 | 提交日期 | 回复条数 | 回复按钮
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -3185,7 +3251,6 @@ fun FeedbackItem(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // 标题（占据大部分空间）
             Text(
                 text = feedback.title,
                 color = Color.White,
@@ -3198,7 +3263,6 @@ fun FeedbackItem(
 
             Spacer(modifier = Modifier.width(12.dp))
 
-            // 提交日期
             Text(
                 text = feedback.getFormattedCreatedTime(),
                 color = Color.Gray,
@@ -3207,7 +3271,6 @@ fun FeedbackItem(
 
             Spacer(modifier = Modifier.width(12.dp))
 
-            // 回复条数
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -3226,7 +3289,6 @@ fun FeedbackItem(
 
             Spacer(modifier = Modifier.width(12.dp))
 
-            // 回复按钮
             Button(
                 onClick = onReply,
                 colors = ButtonDefaults.buttonColors(
@@ -3242,375 +3304,239 @@ fun FeedbackItem(
 }
 
 /**
- * 客服工作台内容 - 简化版本
+ * 客服工作台概览组件
  */
 @Composable
-fun SupportDeskContent(
-    supportViewModel: SupportViewModel
-) {
-    var deskStats by remember { mutableStateOf<Map<String, Any>>(emptyMap()) }
-    var pendingConversations by remember { mutableStateOf<List<SupportConversationDisplay>>(emptyList()) }
-    var recentFeedbacks by remember { mutableStateOf<List<UserFeedback>>(emptyList()) }
-    var selectedTab by remember { mutableStateOf("overview") }
-
-    var isLoading by remember { mutableStateOf(true) }
-    var loadError by remember { mutableStateOf<String?>(null) }
-
-    // 安全的数据加载 - 添加错误处理和超时
-    LaunchedEffect(Unit) {
-        try {
-            Log.d("SupportDeskContent", "开始加载客服工作台数据")
-
-            // 分步加载，避免并发问题
-            supportViewModel.getSupportDeskStats { stats ->
-                Log.d("SupportDeskContent", "获取到统计数据: $stats")
-                deskStats = stats
-            }
-
-            supportViewModel.getPendingConversations { conversations ->
-                Log.d("SupportDeskContent", "获取到待处理对话: ${conversations.size}个")
-                pendingConversations = conversations
-            }
-
-            supportViewModel.getRecentFeedbacks { feedbacks ->
-                Log.d("SupportDeskContent", "获取到最近反馈: ${feedbacks.size}个")
-                recentFeedbacks = feedbacks
-                isLoading = false
-            }
-
-        } catch (e: Exception) {
-            Log.e("SupportDeskContent", "加载客服工作台数据失败", e)
-            loadError = "加载数据失败: ${e.message}"
-            isLoading = false
-        }
-    }
-
-    // 错误处理和加载状态
-    if (loadError != null) {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
-        ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(
-                    text = "⚠️ 加载失败",
-                    color = Color.Red,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = loadError!!,
-                    color = Color.Gray,
-                    fontSize = 14.sp,
-                    textAlign = TextAlign.Center
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                Button(
-                    onClick = {
-                        loadError = null
-                        isLoading = true
-                        // 重新加载数据
-                        supportViewModel.getSupportDeskStats { stats ->
-                            deskStats = stats
-                        }
-                        supportViewModel.getPendingConversations { conversations ->
-                            pendingConversations = conversations
-                        }
-                        supportViewModel.getRecentFeedbacks { feedbacks ->
-                            recentFeedbacks = feedbacks
-                            isLoading = false
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF4285F4)
-                    )
-                ) {
-                    Text("重试", color = Color.White)
-                }
-            }
-        }
-        return
-    }
-
-    if (isLoading) {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
-        ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                CircularProgressIndicator(
-                    color = Color(0xFFFFD700),
-                    modifier = Modifier.size(48.dp)
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    text = "正在加载客服工作台...",
-                    color = Color.White,
-                    fontSize = 16.sp
-                )
-            }
-        }
-        return
-    }
-
-    // 简化的滚动布局
-    LazyColumn(
+private fun SupportDeskOverview(stats: Map<String, Any>) {
+    Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // 标签页选择器
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+        Text(
+            text = "工作台概览",
+            color = Color(0xFFFFD700),
+            fontSize = 18.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+
+        if (stats.isNotEmpty()) {
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(3),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                val tabs = listOf(
-                    "overview" to "概览",
-                    "conversations" to "对话管理",
-                    "feedbacks" to "反馈处理"
+                val statsToShow = listOf(
+                    "active_conversations" to "活跃对话",
+                    "pending_conversations" to "待处理对话",
+                    "resolved_today" to "今日已解决",
+                    "online_agents" to "在线客服",
+                    "total_agents" to "总客服数",
+                    "customer_satisfaction" to "满意度"
                 )
 
-                tabs.forEach { (tabId, tabName) ->
-                    Button(
-                        onClick = { selectedTab = tabId },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (selectedTab == tabId)
-                                Color(0xFFFFD700)
-                            else Color(0xFF4285F4).copy(alpha = 0.6f)
-                        ),
-                        shape = RoundedCornerShape(20.dp),
-                        modifier = Modifier.height(40.dp)
-                    ) {
-                        Text(
-                            text = tabName,
-                            color = if (selectedTab == tabId) Color.Black else Color.White,
-                            fontSize = 14.sp,
-                            fontWeight = if (selectedTab == tabId) FontWeight.SemiBold else FontWeight.Normal
-                        )
+                statsToShow.forEach { (key, label) ->
+                    val value = stats[key]
+                    if (value != null) {
+                        item {
+                            SupportStatItem(
+                                title = label,
+                                value = when (key) {
+                                    "customer_satisfaction" -> "${value}★"
+                                    else -> value.toString()
+                                },
+                                icon = when (key) {
+                                    "active_conversations" -> "💬"
+                                    "pending_conversations" -> "⏳"
+                                    "resolved_today" -> "✅"
+                                    "online_agents" -> "👥"
+                                    "total_agents" -> "👤"
+                                    "customer_satisfaction" -> "⭐"
+                                    else -> "📊"
+                                },
+                                color = when (key) {
+                                    "pending_conversations" -> Color(0xFFFF6B6B)
+                                    "resolved_today" -> Color(0xFF4ECDC4)
+                                    "online_agents" -> Color(0xFF45B7D1)
+                                    else -> Color(0xFFFFD700)
+                                }
+                            )
+                        }
                     }
                 }
             }
+        } else {
+            Text(
+                text = "暂无统计数据",
+                color = Color.Gray,
+                fontSize = 14.sp
+            )
         }
+    }
+}
 
-        // 内容区域 - 简化版本避免卡机
-        item {
-            when (selectedTab) {
-                "overview" -> {
-                    // 简化的概览页面
+/**
+ * 对话管理组件
+ */
+@Composable
+private fun ConversationManagement(conversations: List<SupportConversationDisplay>) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Text(
+            text = "待处理对话 (${conversations.size})",
+            color = Color(0xFFFFD700),
+            fontSize = 18.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+
+        if (conversations.isNotEmpty()) {
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(conversations) { conversation ->
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         colors = CardDefaults.cardColors(
                             containerColor = Color(0xFF2C3E50).copy(alpha = 0.3f)
-                        )
+                        ),
+                        shape = RoundedCornerShape(8.dp)
                     ) {
                         Column(
-                            modifier = Modifier.padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                            modifier = Modifier.padding(12.dp)
                         ) {
-                            Text(
-                                text = "客服工作台概览",
-                                color = Color(0xFFFFD700),
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-
-                            if (deskStats.isNotEmpty()) {
-                                LazyVerticalGrid(
-                                    columns = GridCells.Fixed(3),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                                    modifier = Modifier.height(200.dp)
-                                ) {
-                                    // 显示主要统计数据，使用中文标签
-                                    val statsToShow = listOf(
-                                        "active_conversations" to "活跃对话",
-                                        "pending_conversations" to "待处理对话",
-                                        "resolved_today" to "今日已解决",
-                                        "online_agents" to "在线客服",
-                                        "total_agents" to "总客服数",
-                                        "customer_satisfaction" to "满意度"
-                                    )
-
-                                    statsToShow.forEach { (key, label) ->
-                                        val value = deskStats[key]
-                                        if (value != null) {
-                                            item {
-                                                Card(
-                                                    colors = CardDefaults.cardColors(
-                                                        containerColor = Color(0xFF1A1A1A).copy(alpha = 0.5f)
-                                                    )
-                                                ) {
-                                                    Column(
-                                                        modifier = Modifier.padding(8.dp),
-                                                        horizontalAlignment = Alignment.CenterHorizontally
-                                                    ) {
-                                                        Text(
-                                                            text = when (key) {
-                                                                "customer_satisfaction" -> "${value}★"
-                                                                else -> value.toString()
-                                                            },
-                                                            color = Color.White,
-                                                            fontSize = 16.sp,
-                                                            fontWeight = FontWeight.Bold
-                                                        )
-                                                        Text(
-                                                            text = label,
-                                                            color = Color.Gray,
-                                                            fontSize = 12.sp,
-                                                            textAlign = TextAlign.Center
-                                                        )
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            } else {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
                                 Text(
-                                    text = "暂无统计数据",
-                                    color = Color.Gray,
-                                    fontSize = 14.sp
+                                    text = conversation.conversationTitle,
+                                    color = Color.White,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Text(
+                                    text = when(conversation.priority) {
+                                        "urgent" -> "紧急"
+                                        "high" -> "高"
+                                        "normal" -> "普通"
+                                        "low" -> "低"
+                                        else -> "普通"
+                                    },
+                                    color = when(conversation.priority) {
+                                        "urgent" -> Color.Red
+                                        "high" -> Color(0xFFFF9800)
+                                        else -> Color.Gray
+                                    },
+                                    fontSize = 12.sp
                                 )
                             }
-                        }
-                    }
-                }
-
-                "conversations" -> {
-                    // 简化的对话管理页面
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(
-                            containerColor = Color(0xFF2C3E50).copy(alpha = 0.3f)
-                        )
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(16.dp)
-                        ) {
+                            Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = "待处理对话 (${pendingConversations.size})",
-                                color = Color(0xFFFFD700),
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold
+                                text = conversation.lastMessage,
+                                color = Color.Gray,
+                                fontSize = 12.sp,
+                                maxLines = 2
                             )
-
-                            Spacer(modifier = Modifier.height(8.dp))
-
-                            if (pendingConversations.isNotEmpty()) {
-                                pendingConversations.take(5).forEach { conversation ->
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(vertical = 4.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Text(
-                                            text = conversation.conversationTitle,
-                                            color = Color.White,
-                                            fontSize = 14.sp,
-                                            modifier = Modifier.weight(1f)
-                                        )
-                                        Text(
-                                            text = when(conversation.priority) {
-                                                "urgent" -> "紧急"
-                                                "high" -> "高"
-                                                "normal" -> "普通"
-                                                "low" -> "低"
-                                                else -> "普通"
-                                            },
-                                            color = when(conversation.priority) {
-                                                "urgent" -> Color.Red
-                                                "high" -> Color(0xFFFF9800)
-                                                else -> Color.Gray
-                                            },
-                                            fontSize = 12.sp
-                                        )
-                                    }
-                                }
-                            } else {
-                                Text(
-                                    text = "暂无待处理对话",
-                                    color = Color.Gray,
-                                    fontSize = 14.sp
-                                )
-                            }
-                        }
-                    }
-                }
-
-                "feedbacks" -> {
-                    // 简化的反馈处理页面
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(
-                            containerColor = Color(0xFF2C3E50).copy(alpha = 0.3f)
-                        )
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(16.dp)
-                        ) {
-                            Text(
-                                text = "最近反馈 (${recentFeedbacks.size})",
-                                color = Color(0xFFFFD700),
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-
-                            Spacer(modifier = Modifier.height(8.dp))
-
-                            if (recentFeedbacks.isNotEmpty()) {
-                                recentFeedbacks.take(5).forEach { feedback ->
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(vertical = 4.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Text(
-                                            text = feedback.title,
-                                            color = Color.White,
-                                            fontSize = 14.sp,
-                                            modifier = Modifier.weight(1f),
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                        Text(
-                                            text = when(feedback.status) {
-                                                "submitted" -> "待处理"
-                                                "reviewing" -> "处理中"
-                                                "resolved" -> "已解决"
-                                                "closed" -> "已关闭"
-                                                "withdrawn" -> "已撤回"
-                                                else -> "未知"
-                                            },
-                                            color = when(feedback.status) {
-                                                "submitted" -> Color(0xFFFF9800)
-                                                "reviewing" -> Color(0xFF4285F4)
-                                                "resolved" -> Color.Green
-                                                else -> Color.Gray
-                                            },
-                                            fontSize = 12.sp
-                                        )
-                                    }
-                                }
-                            } else {
-                                Text(
-                                    text = "暂无最近反馈",
-                                    color = Color.Gray,
-                                    fontSize = 14.sp
-                                )
-                            }
                         }
                     }
                 }
             }
+        } else {
+            Text(
+                text = "暂无待处理对话",
+                color = Color.Gray,
+                fontSize = 14.sp
+            )
+        }
+    }
+}
+
+/**
+ * 反馈处理组件
+ */
+@Composable
+private fun FeedbackProcessing(feedbacks: List<UserFeedback>) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Text(
+            text = "最近反馈 (${feedbacks.size})",
+            color = Color(0xFFFFD700),
+            fontSize = 18.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+
+        if (feedbacks.isNotEmpty()) {
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(feedbacks) { feedback ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = Color(0xFF2C3E50).copy(alpha = 0.3f)
+                        ),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = feedback.title,
+                                    color = Color.White,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.weight(1f),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = when(feedback.status) {
+                                        "submitted" -> "待处理"
+                                        "reviewing" -> "处理中"
+                                        "resolved" -> "已解决"
+                                        "closed" -> "已关闭"
+                                        "withdrawn" -> "已撤回"
+                                        else -> "未知"
+                                    },
+                                    color = when(feedback.status) {
+                                        "submitted" -> Color(0xFFFF9800)
+                                        "reviewing" -> Color(0xFF4285F4)
+                                        "resolved" -> Color.Green
+                                        else -> Color.Gray
+                                    },
+                                    fontSize = 12.sp
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = feedback.feedbackType,
+                                color = Color(0xFFFFD700),
+                                fontSize = 12.sp
+                            )
+                        }
+                    }
+                }
+            }
+        } else {
+            Text(
+                text = "暂无最近反馈",
+                color = Color.Gray,
+                fontSize = 14.sp
+            )
         }
     }
 }
