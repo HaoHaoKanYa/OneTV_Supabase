@@ -201,14 +201,29 @@ data class SupportMessage(
     }
     
     /**
-     * 获取格式化的时间
+     * 获取格式化的时间 - 北京时间
      */
     fun getFormattedTime(): String {
         return try {
-            val dateTime = LocalDateTime.parse(createdAt.replace("Z", ""))
-            dateTime.format(DateTimeFormatter.ofPattern("HH:mm"))
+            // 解析ISO时间字符串并转换为北京时间
+            val cleanTime = if (createdAt.contains("T")) {
+                createdAt.replace("Z", "").take(19) // 移除时区和微秒
+            } else {
+                createdAt.take(19)
+            }
+
+            val dateTime = LocalDateTime.parse(cleanTime)
+            // 假设输入时间是UTC，转换为北京时间
+            val beijingTime = dateTime.atZone(java.time.ZoneId.of("UTC"))
+                .withZoneSameInstant(java.time.ZoneId.of("Asia/Shanghai"))
+            beijingTime.format(DateTimeFormatter.ofPattern("HH:mm"))
         } catch (e: Exception) {
-            "00:00"
+            // 如果解析失败，尝试简单格式化
+            try {
+                createdAt.take(5) // 取前5个字符作为时间
+            } catch (e2: Exception) {
+                "00:00"
+            }
         }
     }
     
@@ -461,6 +476,12 @@ data class SupportUiState(
     val showSupportDesk: Boolean = false,
     val showSystemLogs: Boolean = false,
     val systemLogs: List<SystemLogEntry> = emptyList(),
+    // 管理员对话管理相关状态
+    val showAdminChat: Boolean = false,
+    val selectedConversation: SupportConversationDisplay? = null,
+    val adminChatMessages: List<SupportMessage> = emptyList(),
+    val adminCurrentMessage: String = "",
+    val newConversationCount: Int = 0, // 新对话数量，用于红点提示
     val lastRefreshTime: Long = 0L,
     val feedbackRefreshTrigger: Long = 0L, // 用于触发反馈数据刷新
     // 用户消息提示相关

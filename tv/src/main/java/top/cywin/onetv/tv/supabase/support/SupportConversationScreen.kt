@@ -299,17 +299,22 @@ private fun ConversationHeader(
 }
 
 /**
- * 消息项
+ * 消息项 - 微信式左右对话布局
  */
 @Composable
 private fun MessageItem(
     message: SupportMessage
 ) {
+    // 微信式布局：客服消息在左侧，用户消息在右侧
     val isFromSupport = message.isFromSupport
     val alignment = if (isFromSupport) Alignment.CenterStart else Alignment.CenterEnd
-    val backgroundColor = if (isFromSupport) 
-        Color.Blue.copy(alpha = 0.3f) else Color.Green.copy(alpha = 0.3f)
-    
+    val backgroundColor = if (isFromSupport)
+        Color(0xFF2C3E50).copy(alpha = 0.8f) else Color(0xFF4CAF50).copy(alpha = 0.8f)
+    val textColor = Color.White
+    val senderText = if (isFromSupport) "客服" else "我"
+    val senderIcon = if (isFromSupport) "👨‍💼" else "👤"
+    val senderColor = if (isFromSupport) Color(0xFF4ECDC4) else Color(0xFFFFD700)
+
     Box(
         modifier = Modifier.fillMaxWidth(),
         contentAlignment = alignment
@@ -321,40 +326,52 @@ private fun MessageItem(
             colors = CardDefaults.cardColors(
                 containerColor = backgroundColor
             ),
-            shape = RoundedCornerShape(8.dp),
+            shape = RoundedCornerShape(
+                topStart = 16.dp,
+                topEnd = 16.dp,
+                bottomStart = if (isFromSupport) 4.dp else 16.dp,
+                bottomEnd = if (isFromSupport) 16.dp else 4.dp
+            ),
             border = BorderStroke(1.dp, Color.Gray.copy(alpha = 0.2f))
         ) {
             Column(
-                modifier = Modifier.padding(6.dp)
+                modifier = Modifier.padding(12.dp)
             ) {
-                // 发送者和时间
+                // 发送者信息
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     Text(
-                        text = if (isFromSupport) "客服" else "我",
-                        color = Color.White,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold
+                        text = senderIcon,
+                        fontSize = 12.sp
                     )
                     Text(
-                        text = message.getFormattedTime(),
-                        color = Color.Gray,
-                        fontSize = 10.sp
+                        text = senderText,
+                        color = senderColor,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
                     )
                 }
-                
+
                 Spacer(modifier = Modifier.height(4.dp))
-                
+
                 // 消息内容
                 Text(
                     text = message.messageText,
-                    color = Color.White,
+                    color = textColor,
                     fontSize = 14.sp
                 )
-                
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                // 时间显示
+                Text(
+                    text = message.getFormattedTime(),
+                    color = Color.Gray,
+                    fontSize = 10.sp
+                )
+
                 // 已读状态（仅显示用户发送的消息）
                 if (!isFromSupport && message.isRead()) {
                     Spacer(modifier = Modifier.height(2.dp))

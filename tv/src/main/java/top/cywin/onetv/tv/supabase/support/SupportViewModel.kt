@@ -1063,21 +1063,6 @@ class SupportViewModel(application: Application) : AndroidViewModel(application)
     }
 
     /**
-     * 获取对话统计信息
-     */
-    fun getConversationStats(callback: (Map<String, Int>) -> Unit) {
-        viewModelScope.launch {
-            try {
-                val stats = supportRepository.getConversationStats()
-                callback(stats)
-            } catch (e: Exception) {
-                Log.e(TAG, "获取对话统计信息失败", e)
-                callback(emptyMap())
-            }
-        }
-    }
-
-    /**
      * 获取反馈统计信息
      */
     fun getFeedbackStats(callback: (Map<String, Int>) -> Unit) {
@@ -1250,6 +1235,198 @@ class SupportViewModel(application: Application) : AndroidViewModel(application)
             } catch (e: Exception) {
                 Log.e(TAG, "获取最近反馈列表失败", e)
                 callback(emptyList())
+            }
+        }
+    }
+
+    // ==================== 管理员对话管理功能 ====================
+
+    /**
+     * 显示管理员聊天窗口
+     */
+    fun showAdminChat(conversation: SupportConversationDisplay) {
+        Log.d(TAG, "显示管理员聊天窗口: ${conversation.id}")
+        _uiState.value = _uiState.value.copy(
+            showAdminChat = true,
+            selectedConversation = conversation,
+            adminCurrentMessage = ""
+        )
+
+        // 加载对话消息
+        loadAdminChatMessages(conversation.id)
+
+        // 接管对话
+        takeOverConversation(conversation.id)
+    }
+
+    /**
+     * 隐藏管理员聊天窗口
+     */
+    fun hideAdminChat() {
+        Log.d(TAG, "隐藏管理员聊天窗口")
+        _uiState.value = _uiState.value.copy(
+            showAdminChat = false,
+            selectedConversation = null,
+            adminChatMessages = emptyList(),
+            adminCurrentMessage = ""
+        )
+    }
+
+    /**
+     * 更新管理员当前输入消息
+     */
+    fun updateAdminCurrentMessage(message: String) {
+        _uiState.value = _uiState.value.copy(adminCurrentMessage = message)
+    }
+
+    /**
+     * 加载管理员聊天消息
+     */
+    private fun loadAdminChatMessages(conversationId: String) {
+        viewModelScope.launch {
+            try {
+                Log.d(TAG, "加载管理员聊天消息: $conversationId")
+
+                // 直接获取消息列表
+                val messages = supportRepository.getConversationMessages(conversationId)
+                _uiState.value = _uiState.value.copy(adminChatMessages = messages)
+
+                // 订阅实时消息更新
+                supportRepository.subscribeToConversationMessages(conversationId) { updatedMessages ->
+                    _uiState.value = _uiState.value.copy(adminChatMessages = updatedMessages)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "加载管理员聊天消息失败", e)
+            }
+        }
+    }
+
+    /**
+     * 管理员发送消息
+     */
+    fun sendAdminMessage() {
+        val conversationId = _uiState.value.selectedConversation?.id
+        val message = _uiState.value.adminCurrentMessage.trim()
+
+        if (conversationId != null && message.isNotEmpty()) {
+            viewModelScope.launch {
+                try {
+                    Log.d(TAG, "管理员发送消息: $message")
+                    val success = supportRepository.sendSupportMessage(conversationId, message, "text")
+                    if (success) {
+                        // 清空输入框
+                        _uiState.value = _uiState.value.copy(adminCurrentMessage = "")
+                        Log.d(TAG, "管理员消息发送成功")
+                    } else {
+                        Log.e(TAG, "管理员消息发送失败")
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "管理员发送消息异常", e)
+                }
+            }
+        }
+    }
+
+    /**
+     * 接管对话
+     */
+    private fun takeOverConversation(conversationId: String) {
+        viewModelScope.launch {
+            try {
+                Log.d(TAG, "接管对话: $conversationId")
+                val success = supportRepository.takeOverConversation(conversationId)
+                if (success) {
+                    Log.d(TAG, "对话接管成功")
+                    // 更新选中对话的状态
+                    _uiState.value.selectedConversation?.let { conversation ->
+                        val updatedConversation = conversation.copy(
+                            supportId = supportRepository.getCurrentUserId()
+                        )
+                        _uiState.value = _uiState.value.copy(selectedConversation = updatedConversation)
+                    }
+                } else {
+                    Log.e(TAG, "对话接管失败")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "接管对话异常", e)
+            }
+        }
+    }
+
+    /**
+     * 关闭管理员对话
+     */
+    fun closeAdminConversation() {
+        val conversationId = _uiState.value.selectedConversation?.id
+        if (conversationId != null) {
+            viewModelScope.launch {
+                try {
+                    Log.d(TAG, "关闭管理员对话: $conversationId")
+                    val success = supportRepository.closeConversation(conversationId)
+                    if (success) {
+                        Log.d(TAG, "对话关闭成功")
+                        // 更新对话状态
+                        _uiState.value.selectedConversation?.let { conversation ->
+                            val updatedConversation = conversation.copy(status = "closed")
+                            _uiState.value = _uiState.value.copy(selectedConversation = updatedConversation)
+                        }
+                        // 关闭聊天窗口
+                        hideAdminChat()
+                        // 刷新对话列表
+                        refreshConversationList()
+                    } else {
+                        Log.e(TAG, "对话关闭失败")
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "关闭对话异常", e)
+                }
+            }
+        }
+    }
+
+    /**
+     * 刷新对话列表并更新新对话计数
+     */
+    fun refreshConversationList() {
+        viewModelScope.launch {
+            try {
+                Log.d(TAG, "刷新对话列表")
+                val conversations = supportRepository.getPendingConversations()
+
+                // 计算新对话数量（未接管的对话）
+                val newConversationCount = conversations.count { it.supportId == null }
+
+                _uiState.value = _uiState.value.copy(
+                    newConversationCount = newConversationCount,
+                    lastRefreshTime = System.currentTimeMillis()
+                )
+                Log.d(TAG, "对话列表刷新完成，新对话数量: $newConversationCount")
+            } catch (e: Exception) {
+                Log.e(TAG, "刷新对话列表失败", e)
+            }
+        }
+    }
+
+    /**
+     * 清除新对话计数
+     */
+    fun clearNewConversationCount() {
+        _uiState.value = _uiState.value.copy(newConversationCount = 0)
+    }
+
+    /**
+     * 获取对话统计信息
+     */
+    fun getConversationStats(callback: (Map<String, Any>) -> Unit) {
+        viewModelScope.launch {
+            try {
+                Log.d(TAG, "获取对话统计信息")
+                val stats = supportRepository.getConversationStats()
+                callback(stats)
+                Log.d(TAG, "对话统计信息获取成功: $stats")
+            } catch (e: Exception) {
+                Log.e(TAG, "获取对话统计信息失败", e)
+                callback(emptyMap())
             }
         }
     }

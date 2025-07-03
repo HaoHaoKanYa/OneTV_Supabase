@@ -583,31 +583,12 @@ class SupportRepository {
     }
     
     /**
-     * 关闭对话
+     * 获取当前用户ID
      */
-    suspend fun closeConversation(conversationId: String): Boolean = withContext(Dispatchers.IO) {
-        try {
-            Log.d(TAG, "关闭对话: $conversationId")
-            
-            client.from("support_conversations").update(
-                buildJsonObject {
-                    put("status", SupportConversation.STATUS_CLOSED)
-                    put("closed_at", "now()")
-                }
-            ) {
-                filter {
-                    eq("id", conversationId)
-                }
-            }
-            
-            Log.d(TAG, "对话关闭成功")
-            return@withContext true
-        } catch (e: Exception) {
-            Log.e(TAG, "关闭对话失败", e)
-            return@withContext false
-        }
+    fun getCurrentUserId(): String? {
+        return client.auth.currentUserOrNull()?.id
     }
-    
+
     /**
      * 检查当前用户是否为管理员（支持多角色系统）
      */
@@ -851,41 +832,6 @@ class SupportRepository {
         } catch (e: Exception) {
             Log.e(TAG, "更新对话优先级失败", e)
             return@withContext false
-        }
-    }
-
-    /**
-     * 获取对话统计信息
-     */
-    suspend fun getConversationStats(): Map<String, Int> = withContext(Dispatchers.IO) {
-        try {
-            Log.d(TAG, "获取对话统计信息")
-
-            val currentUser = client.auth.currentUserOrNull()
-            if (currentUser == null) {
-                return@withContext emptyMap()
-            }
-
-            // 获取用户的对话统计
-            val userConversations = client.from("support_conversations")
-                .select(columns = Columns.list("status")) {
-                    filter {
-                        eq("user_id", currentUser.id)
-                    }
-                }
-                .decodeList<Map<String, String>>()
-
-            val stats = mutableMapOf<String, Int>()
-            stats["total"] = userConversations.size
-            stats["open"] = userConversations.count { it["status"] == "open" }
-            stats["closed"] = userConversations.count { it["status"] == "closed" }
-            stats["waiting"] = userConversations.count { it["status"] == "waiting" }
-
-            Log.d(TAG, "对话统计: $stats")
-            return@withContext stats
-        } catch (e: Exception) {
-            Log.e(TAG, "获取对话统计信息失败", e)
-            return@withContext emptyMap()
         }
     }
 
@@ -2076,6 +2022,40 @@ class SupportRepository {
     }
 
     /**
+     * 关闭对话
+     */
+    suspend fun closeConversation(conversationId: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            Log.d(TAG, "关闭对话: $conversationId")
+
+            // 获取当前用户信息
+            val currentUser = client.auth.currentUserOrNull()
+            if (currentUser == null) {
+                Log.w(TAG, "用户未登录")
+                return@withContext false
+            }
+
+            // 更新对话状态为已关闭
+            client.from("support_conversations")
+                .update(buildJsonObject {
+                    put("status", "closed")
+                    put("closed_at", java.time.LocalDateTime.now().toString())
+                    put("updated_at", java.time.LocalDateTime.now().toString())
+                }) {
+                    filter {
+                        eq("id", conversationId)
+                    }
+                }
+
+            Log.d(TAG, "对话关闭成功")
+            return@withContext true
+        } catch (e: Exception) {
+            Log.e(TAG, "关闭对话失败", e)
+            return@withContext false
+        }
+    }
+
+    /**
      * 结束对话（客服）
      */
     suspend fun endConversation(conversationId: String): Boolean = withContext(Dispatchers.IO) {
@@ -2105,6 +2085,41 @@ class SupportRepository {
         } catch (e: Exception) {
             Log.e(TAG, "结束对话失败", e)
             return@withContext false
+        }
+    }
+
+    /**
+     * 获取对话统计信息
+     */
+    suspend fun getConversationStats(): Map<String, Any> = withContext(Dispatchers.IO) {
+        try {
+            Log.d(TAG, "获取对话统计信息")
+
+            // 获取所有对话
+            val allConversations = client.from("support_conversations")
+                .select()
+                .decodeList<SupportConversation>()
+
+            // 统计各种状态的对话数量
+            val totalConversations = allConversations.size
+            val pendingConversations = allConversations.count { it.status == "pending" }
+            val activeConversations = allConversations.count { it.status == "active" }
+            val closedConversations = allConversations.count { it.status == "closed" }
+            val newConversations = allConversations.count { it.supportId == null && it.status == "pending" }
+
+            val stats = mapOf(
+                "total_conversations" to totalConversations,
+                "pending_conversations" to pendingConversations,
+                "active_conversations" to activeConversations,
+                "closed_conversations" to closedConversations,
+                "new_conversations" to newConversations
+            )
+
+            Log.d(TAG, "对话统计信息获取成功: $stats")
+            return@withContext stats
+        } catch (e: Exception) {
+            Log.e(TAG, "获取对话统计信息失败", e)
+            return@withContext emptyMap()
         }
     }
 }
