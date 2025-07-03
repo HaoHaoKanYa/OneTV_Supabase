@@ -453,6 +453,8 @@ data class SupportUiState(
     val showFeedbackList: Boolean = false,
     val showFeedbackDetail: Boolean = false,
     val selectedFeedback: UserFeedback? = null,
+    val showAdminReplyDialog: Boolean = false,
+    val adminReplyText: String = "",
     val showRoleManagement: Boolean = false,
     val showUserManagement: Boolean = false,
     val showFeedbackManagement: Boolean = false,

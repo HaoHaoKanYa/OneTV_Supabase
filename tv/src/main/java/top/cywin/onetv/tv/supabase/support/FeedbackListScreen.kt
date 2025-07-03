@@ -31,10 +31,13 @@ fun FeedbackListScreen(
     onClose: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    
-    LaunchedEffect(Unit) {
-        Log.d("FeedbackListScreen", "加载反馈列表")
-        viewModel.loadUserFeedbackList()
+
+    // 只在首次加载时获取数据，避免不停刷新
+    LaunchedEffect(key1 = "feedback_list_initial_load") {
+        if (uiState.feedbackState.feedbackList.isEmpty()) {
+            Log.d("FeedbackListScreen", "首次加载反馈列表")
+            viewModel.loadUserFeedbackList()
+        }
     }
     
     Box(
@@ -163,45 +166,8 @@ fun FeedbackListScreen(
                 }
             }
         }
-        
-        // 反馈详情弹窗
-        if (uiState.showFeedbackDetail && uiState.selectedFeedback != null) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.7f))
-                    .clickable { viewModel.hideFeedbackDetail() },
-                contentAlignment = Alignment.Center
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth(0.95f)
-                        .fillMaxHeight(0.95f)
-                        .background(
-                            color = Color(0xFF1A1A1A),
-                            shape = RoundedCornerShape(4.dp)
-                        )
-                        .border(
-                            width = 1.dp,
-                            color = Color.Gray.copy(alpha = 0.3f),
-                            shape = RoundedCornerShape(4.dp)
-                        )
-                ) {
-                    uiState.selectedFeedback?.let { feedback ->
-                        FeedbackDetailDialog(
-                            feedback = feedback,
-                            onClose = { viewModel.hideFeedbackDetail() },
-                            onWithdraw = { feedbackId ->
-                                viewModel.withdrawFeedback(feedbackId)
-                            },
-                            onDelete = { feedbackId ->
-                                viewModel.deleteFeedback(feedbackId)
-                            }
-                        )
-                    }
-                }
-            }
-        }
+
+        // 注意：反馈详情弹窗已移至FullScreenDialogs组件中统一管理，占整个应用屏幕85%
     }
 }
 

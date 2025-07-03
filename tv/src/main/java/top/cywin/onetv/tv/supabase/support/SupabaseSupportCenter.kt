@@ -2,9 +2,11 @@ package top.cywin.onetv.tv.supabase.support
 
 import android.content.Context
 import android.util.Log
+import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -13,13 +15,21 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import top.cywin.onetv.tv.ui.material.SimplePopup
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -57,7 +67,7 @@ fun SupabaseSupportCenter(
     userData: SupabaseUserDataIptv?,
     isLoading: Boolean,
     context: Context,
-    supportViewModel: SupportViewModel = viewModel()
+    supportViewModel: SupportViewModel
 ) {
     val uiState by supportViewModel.uiState.collectAsState()
 
@@ -148,127 +158,7 @@ private fun SupportCenterLayout(
             )
         }
 
-        // 聊天窗口弹窗 - 最大化高度，优化小屏幕体验
-        if (uiState.showConversation) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.7f))
-                    .clickable { /* 防止点击穿透 */ },
-                contentAlignment = Alignment.Center
-            ) {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth(0.95f)
-                        .fillMaxHeight(0.95f),
-                    colors = CardDefaults.cardColors(
-                        containerColor = Color(0xFF1A1A1A)
-                    ),
-                    shape = RoundedCornerShape(4.dp),
-                    border = BorderStroke(1.dp, Color.Gray.copy(alpha = 0.3f))
-                ) {
-                    SupportConversationScreen(
-                        viewModel = supportViewModel,
-                        onClose = { supportViewModel.hideConversation() }
-                    )
-                }
-            }
-        }
 
-        // 反馈表单弹窗 - 最大化高度，优化小屏幕体验
-        if (uiState.showFeedbackForm) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.7f))
-                    .clickable { /* 防止点击穿透 */ },
-                contentAlignment = Alignment.Center
-            ) {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth(0.95f)
-                        .fillMaxHeight(0.95f),
-                    colors = CardDefaults.cardColors(
-                        containerColor = Color(0xFF1A1A1A)
-                    ),
-                    shape = RoundedCornerShape(4.dp),
-                    border = BorderStroke(1.dp, Color.Gray.copy(alpha = 0.3f))
-                ) {
-                    FeedbackFormScreen(
-                        viewModel = supportViewModel,
-                        onClose = { supportViewModel.hideFeedbackForm() }
-                    )
-                }
-            }
-        }
-
-        // 反馈详情弹窗 - 最大化高度，优化小屏幕体验（无卡片设计）
-        if (uiState.showFeedbackDetail) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.7f))
-                    .clickable { /* 防止点击穿透 */ },
-                contentAlignment = Alignment.Center
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth(0.95f)
-                        .fillMaxHeight(0.95f)
-                        .background(
-                            color = Color(0xFF1A1A1A),
-                            shape = RoundedCornerShape(4.dp)
-                        )
-                        .border(
-                            width = 1.dp,
-                            color = Color.Gray.copy(alpha = 0.3f),
-                            shape = RoundedCornerShape(4.dp)
-                        )
-                ) {
-                    uiState.selectedFeedback?.let { feedback ->
-                        FeedbackDetailDialog(
-                            feedback = feedback,
-                            onClose = { supportViewModel.hideFeedbackDetail() },
-                            onWithdraw = { feedbackId ->
-                                supportViewModel.withdrawFeedback(feedbackId)
-                                // ViewModel会自动关闭弹窗并刷新列表
-                            },
-                            onDelete = { feedbackId ->
-                                supportViewModel.deleteFeedback(feedbackId)
-                                // ViewModel会自动关闭弹窗并刷新列表
-                            }
-                        )
-                    }
-                }
-            }
-        }
-
-        // 反馈列表弹窗 - 最大化高度，优化小屏幕体验
-        if (uiState.showFeedbackList) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.7f))
-                    .clickable { /* 防止点击穿透 */ },
-                contentAlignment = Alignment.Center
-            ) {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth(0.95f)
-                        .fillMaxHeight(0.95f),
-                    colors = CardDefaults.cardColors(
-                        containerColor = Color(0xFF1A1A1A)
-                    ),
-                    shape = RoundedCornerShape(4.dp),
-                    border = BorderStroke(1.dp, Color.Gray.copy(alpha = 0.3f))
-                ) {
-                    FeedbackListScreen(
-                        viewModel = supportViewModel,
-                        onClose = { supportViewModel.hideFeedbackList() }
-                    )
-                }
-            }
-        }
     }
 }
 
@@ -1823,6 +1713,7 @@ private fun UserManagementContent(
     var allUsers by remember { mutableStateOf<List<UserProfile>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var searchQuery by remember { mutableStateOf("") }
+    var showSearchField by remember { mutableStateOf(false) }
 
     // 加载数据的函数
     val loadData = {
@@ -1863,8 +1754,8 @@ private fun UserManagementContent(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 8.dp), // 减少底部间距
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                .padding(bottom = 4.dp), // 进一步减少底部间距
+            horizontalArrangement = Arrangement.spacedBy(6.dp), // 减少间距
             verticalAlignment = Alignment.CenterVertically
         ) {
             // 统计信息
@@ -1874,22 +1765,57 @@ private fun UserManagementContent(
                 StatItem("管理员", (userStats["admin"] as? Int) ?: 0)
             }
 
-            // 刷新按钮 - 调整大小与统计信息一致
+            // 刷新按钮 - 添加TV端光标跟随效果
+            var refreshFocused by remember { mutableStateOf(false) }
             IconButton(
                 onClick = { loadData() },
-                modifier = Modifier.size(32.dp) // 与StatItem高度一致
+                modifier = Modifier
+                    .size(32.dp)
+                    .onFocusChanged { refreshFocused = it.isFocused }
+                    .border(
+                        width = if (refreshFocused) 2.dp else 0.dp,
+                        color = Color(0xFFFFD700),
+                        shape = CircleShape
+                    )
             ) {
                 Icon(
                     imageVector = Icons.Default.Refresh,
                     contentDescription = "刷新",
-                    tint = Color(0xFFFFD700),
+                    tint = if (refreshFocused) Color(0xFFFFD700) else Color.White,
                     modifier = Modifier.size(20.dp)
                 )
             }
 
-            Spacer(modifier = Modifier.width(8.dp))
+            // 搜索图标按钮
+            var searchFocused by remember { mutableStateOf(false) }
+            var showSearchField by remember { mutableStateOf(false) }
 
-            // 搜索框
+            IconButton(
+                onClick = { showSearchField = !showSearchField },
+                modifier = Modifier
+                    .size(32.dp)
+                    .onFocusChanged { searchFocused = it.isFocused }
+                    .border(
+                        width = if (searchFocused) 2.dp else 0.dp,
+                        color = Color(0xFFFFD700),
+                        shape = CircleShape
+                    )
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Search,
+                    contentDescription = "搜索",
+                    tint = if (searchFocused) Color(0xFFFFD700) else Color.White,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
+
+        // 可展开的搜索框
+        AnimatedVisibility(
+            visible = showSearchField,
+            enter = slideInVertically() + expandVertically(),
+            exit = slideOutVertically() + shrinkVertically()
+        ) {
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
@@ -1901,8 +1827,9 @@ private fun UserManagementContent(
                     )
                 },
                 modifier = Modifier
-                    .weight(1f)
-                    .height(40.dp), // 与其他元素高度一致
+                    .fillMaxWidth()
+                    .height(40.dp)
+                    .padding(bottom = 4.dp),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = Color(0xFFFFD700),
                     unfocusedBorderColor = Color.Gray,
@@ -2053,7 +1980,7 @@ private fun CompactUserRow(
         // 邮箱
         Text(
             text = user.email ?: "无邮箱",
-            color = Color.Gray,
+            color = Color.White, // 修改为亮色
             fontSize = 11.sp,
             modifier = Modifier.weight(2.5f),
             maxLines = 1,
@@ -2781,7 +2708,7 @@ private fun FeedbackManagementContent(
     // 监听反馈刷新触发器，当删除反馈后自动刷新数据
     LaunchedEffect(uiState.feedbackRefreshTrigger) {
         if (uiState.feedbackRefreshTrigger > 0) {
-            Log.d("FeedbackManagementContent", "检测到反馈数据变化，刷新反馈管理列表")
+            Log.d("FeedbackMgmtContent", "检测到反馈数据变化，刷新反馈管理列表")
             supportViewModel.getAllFeedbackStats { stats ->
                 feedbackStats = stats
             }
@@ -2926,11 +2853,12 @@ private fun FeedbackManagementContent(
                     FeedbackItem(
                         feedback = feedback,
                         onReply = {
-                            selectedFeedback = feedback
-                            showReplyDialog = true
+                            // 使用ViewModel显示管理员回复弹窗
+                            supportViewModel.showAdminReplyDialog(feedback)
                         },
                         onClick = {
-                            selectedFeedback = feedback
+                            // 使用ViewModel显示反馈详情弹窗，将在FullScreenDialogs中显示
+                            supportViewModel.showFeedbackDetail(feedback)
                         }
                     )
                 }
@@ -2938,57 +2866,7 @@ private fun FeedbackManagementContent(
         }
     }
 
-    // 反馈详情弹窗 - 占据95%屏幕
-    selectedFeedback?.let { feedback ->
-        FeedbackDetailDialog(
-            feedback = feedback,
-            onDismiss = { selectedFeedback = null },
-            onReply = {
-                selectedFeedback = feedback
-                showReplyDialog = true
-            },
-            onDelete = { feedbackId ->
-                supportViewModel.deleteFeedback(feedbackId)
-                selectedFeedback = null
-                // 刷新数据
-                supportViewModel.getAllFeedbackStats { stats ->
-                    feedbackStats = stats
-                }
-                supportViewModel.getAllFeedbacks { feedbacks ->
-                    feedbackList = feedbacks
-                }
-            }
-        )
-    }
-
-    // 回复弹窗
-    if (showReplyDialog && selectedFeedback != null) {
-        FeedbackReplyDialog(
-            feedback = selectedFeedback!!,
-            replyText = replyText,
-            onReplyTextChange = { replyText = it },
-            onConfirm = {
-                supportViewModel.replyToFeedback(
-                    selectedFeedback!!.id,
-                    replyText
-                ) { success ->
-                    if (success) {
-                        showReplyDialog = false
-                        selectedFeedback = null
-                        replyText = ""
-                        // 刷新数据
-                        supportViewModel.getAllFeedbacks { feedbacks ->
-                            feedbackList = feedbacks
-                        }
-                    }
-                }
-            },
-            onDismiss = {
-                showReplyDialog = false
-                replyText = ""
-            }
-        )
-    }
+    // 注意：反馈详情弹窗和管理员回复弹窗已移至FullScreenDialogs组件中统一管理，占整个应用屏幕95%
 }
 
 
@@ -3550,29 +3428,45 @@ fun SupportDeskContent(
                                     verticalArrangement = Arrangement.spacedBy(8.dp),
                                     modifier = Modifier.height(200.dp)
                                 ) {
-                                    deskStats.forEach { (key, value) ->
-                                        item {
-                                            Card(
-                                                colors = CardDefaults.cardColors(
-                                                    containerColor = Color(0xFF1A1A1A).copy(alpha = 0.5f)
-                                                )
-                                            ) {
-                                                Column(
-                                                    modifier = Modifier.padding(8.dp),
-                                                    horizontalAlignment = Alignment.CenterHorizontally
+                                    // 显示主要统计数据，使用中文标签
+                                    val statsToShow = listOf(
+                                        "active_conversations" to "活跃对话",
+                                        "pending_conversations" to "待处理对话",
+                                        "resolved_today" to "今日已解决",
+                                        "online_agents" to "在线客服",
+                                        "total_agents" to "总客服数",
+                                        "customer_satisfaction" to "满意度"
+                                    )
+
+                                    statsToShow.forEach { (key, label) ->
+                                        val value = deskStats[key]
+                                        if (value != null) {
+                                            item {
+                                                Card(
+                                                    colors = CardDefaults.cardColors(
+                                                        containerColor = Color(0xFF1A1A1A).copy(alpha = 0.5f)
+                                                    )
                                                 ) {
-                                                    Text(
-                                                        text = value.toString(),
-                                                        color = Color.White,
-                                                        fontSize = 16.sp,
-                                                        fontWeight = FontWeight.Bold
-                                                    )
-                                                    Text(
-                                                        text = key.replace("_", " "),
-                                                        color = Color.Gray,
-                                                        fontSize = 12.sp,
-                                                        textAlign = TextAlign.Center
-                                                    )
+                                                    Column(
+                                                        modifier = Modifier.padding(8.dp),
+                                                        horizontalAlignment = Alignment.CenterHorizontally
+                                                    ) {
+                                                        Text(
+                                                            text = when (key) {
+                                                                "customer_satisfaction" -> "${value}★"
+                                                                else -> value.toString()
+                                                            },
+                                                            color = Color.White,
+                                                            fontSize = 16.sp,
+                                                            fontWeight = FontWeight.Bold
+                                                        )
+                                                        Text(
+                                                            text = label,
+                                                            color = Color.Gray,
+                                                            fontSize = 12.sp,
+                                                            textAlign = TextAlign.Center
+                                                        )
+                                                    }
                                                 }
                                             }
                                         }
@@ -3624,7 +3518,13 @@ fun SupportDeskContent(
                                             modifier = Modifier.weight(1f)
                                         )
                                         Text(
-                                            text = conversation.priority,
+                                            text = when(conversation.priority) {
+                                                "urgent" -> "紧急"
+                                                "high" -> "高"
+                                                "normal" -> "普通"
+                                                "low" -> "低"
+                                                else -> "普通"
+                                            },
                                             color = when(conversation.priority) {
                                                 "urgent" -> Color.Red
                                                 "high" -> Color(0xFFFF9800)
@@ -3682,7 +3582,14 @@ fun SupportDeskContent(
                                             overflow = TextOverflow.Ellipsis
                                         )
                                         Text(
-                                            text = feedback.status,
+                                            text = when(feedback.status) {
+                                                "submitted" -> "待处理"
+                                                "reviewing" -> "处理中"
+                                                "resolved" -> "已解决"
+                                                "closed" -> "已关闭"
+                                                "withdrawn" -> "已撤回"
+                                                else -> "未知"
+                                            },
                                             color = when(feedback.status) {
                                                 "submitted" -> Color(0xFFFF9800)
                                                 "reviewing" -> Color(0xFF4285F4)
@@ -3979,7 +3886,7 @@ fun FeedbackDetailDialog(
 }
 
 /**
- * 反馈详情弹窗 - 占据95%屏幕
+ * 反馈详情弹窗 - 占据85%屏幕
  */
 @Composable
 fun FeedbackDetailDialog(
@@ -3999,7 +3906,7 @@ fun FeedbackDetailDialog(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(16.dp), // 5%的边距
+                .padding(32.dp), // 7.5%的边距 (15%/2)
             contentAlignment = Alignment.Center
         ) {
             Card(
@@ -4166,161 +4073,309 @@ fun FeedbackDetailDialog(
 }
 
 /**
- * 反馈回复弹窗
+ * 管理员回复弹窗内容
  */
 @Composable
-fun FeedbackReplyDialog(
+fun AdminReplyDialogContent(
     feedback: UserFeedback,
     replyText: String,
     onReplyTextChange: (String) -> Unit,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(
-            usePlatformDefaultWidth = false,
-            dismissOnBackPress = true,
-            dismissOnClickOutside = false
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(20.dp)
+    ) {
+        // 标题
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "回复反馈",
+                color = Color(0xFFFFD700),
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold
+            )
+
+            IconButton(
+                onClick = onDismiss,
+                modifier = Modifier.size(28.dp)
+            ) {
+                Text(
+                    text = "✕",
+                    color = Color.Gray,
+                    fontSize = 16.sp
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // 反馈信息
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = Color(0xFF2C3E50).copy(alpha = 0.3f)
+            )
+        ) {
+            Column(
+                modifier = Modifier.padding(12.dp)
+            ) {
+                Text(
+                    text = feedback.title,
+                    color = Color.White,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = feedback.description,
+                    color = Color.Gray,
+                    fontSize = 14.sp,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // 回复输入框
+        Text(
+            text = "回复内容",
+            color = Color(0xFFFFD700),
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold
         )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        OutlinedTextField(
+            value = replyText,
+            onValueChange = onReplyTextChange,
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
+            placeholder = {
+                Text(
+                    "请输入回复内容...",
+                    color = Color.Gray
+                )
+            },
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = Color(0xFFFFD700),
+                unfocusedBorderColor = Color.Gray,
+                focusedTextColor = Color.White,
+                unfocusedTextColor = Color.White
+            ),
+            shape = RoundedCornerShape(8.dp)
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // 底部按钮
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Button(
+                onClick = onDismiss,
+                modifier = Modifier.weight(1f),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color.Gray
+                ),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Text("取消", color = Color.White, fontSize = 14.sp)
+            }
+
+            Button(
+                onClick = onConfirm,
+                modifier = Modifier.weight(1f),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF4285F4)
+                ),
+                shape = RoundedCornerShape(8.dp),
+                enabled = replyText.isNotBlank()
+            ) {
+                Text("确认回复", color = Color.White, fontSize = 14.sp)
+            }
+        }
+    }
+}
+
+/**
+ * 全屏弹窗组件 - 占整个应用屏幕95%
+ * 使用全局弹窗系统，真正占据整个应用屏幕
+ */
+@Composable
+fun SupportFullScreenDialogs(
+    uiState: SupportUiState,
+    supportViewModel: SupportViewModel
+) {
+    // 聊天窗口弹窗 - 使用全局弹窗系统，真正占据整个应用屏幕95%，居中显示
+    SimplePopup(
+        visibleProvider = { uiState.showConversation },
+        onDismissRequest = { supportViewModel.hideConversation() }
     ) {
         Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(32.dp),
+            modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.Center
         ) {
             Card(
                 modifier = Modifier
-                    .fillMaxWidth()
+                    .fillMaxWidth(0.6f)
+                    .fillMaxHeight(0.95f),
+                colors = CardDefaults.cardColors(
+                    containerColor = Color(0xFF1A1A1A).copy(alpha = 0.7f)
+                ),
+                shape = RoundedCornerShape(4.dp),
+                border = BorderStroke(1.dp, Color.Gray.copy(alpha = 0.3f))
+            ) {
+                SupportConversationScreen(
+                    viewModel = supportViewModel,
+                    onClose = { supportViewModel.hideConversation() }
+                )
+            }
+        }
+    }
+
+    // 反馈表单弹窗 - 使用全局弹窗系统，真正占据整个应用屏幕95%，居中显示
+    SimplePopup(
+        visibleProvider = { uiState.showFeedbackForm },
+        onDismissRequest = { supportViewModel.hideFeedbackForm() }
+    ) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth(0.6f)
+                    .fillMaxHeight(0.95f),
+                colors = CardDefaults.cardColors(
+                    containerColor = Color(0xFF1A1A1A).copy(alpha = 0.7f)
+                ),
+                shape = RoundedCornerShape(4.dp),
+                border = BorderStroke(1.dp, Color.Gray.copy(alpha = 0.3f))
+            ) {
+                FeedbackFormScreen(
+                    viewModel = supportViewModel,
+                    onClose = { supportViewModel.hideFeedbackForm() }
+                )
+            }
+        }
+    }
+
+    // 反馈详情弹窗 - 使用全局弹窗系统，真正占据整个应用屏幕95%，居中显示
+    SimplePopup(
+        visibleProvider = { uiState.showFeedbackDetail },
+        onDismissRequest = { supportViewModel.hideFeedbackDetail() }
+    ) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(0.6f)
+                    .fillMaxHeight(0.95f)
+                    .background(
+                        color = Color(0xFF1A1A1A).copy(alpha = 0.7f),
+                        shape = RoundedCornerShape(4.dp)
+                    )
+                    .border(
+                        width = 1.dp,
+                        color = Color.Gray.copy(alpha = 0.3f),
+                        shape = RoundedCornerShape(4.dp)
+                    )
+            ) {
+                uiState.selectedFeedback?.let { feedback ->
+                    FeedbackDetailDialog(
+                        feedback = feedback,
+                        onClose = { supportViewModel.hideFeedbackDetail() },
+                        onWithdraw = { feedbackId ->
+                            supportViewModel.withdrawFeedback(feedbackId)
+                            // ViewModel会自动关闭弹窗并刷新列表
+                        },
+                        onDelete = { feedbackId ->
+                            supportViewModel.deleteFeedback(feedbackId)
+                            // ViewModel会自动关闭弹窗并刷新列表
+                        }
+                    )
+                }
+            }
+        }
+    }
+
+    // 反馈列表弹窗 - 使用全局弹窗系统，真正占据整个应用屏幕95%，居中显示
+    SimplePopup(
+        visibleProvider = { uiState.showFeedbackList },
+        onDismissRequest = { supportViewModel.hideFeedbackList() }
+    ) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth(0.6f)
+                    .fillMaxHeight(0.95f),
+                colors = CardDefaults.cardColors(
+                    containerColor = Color(0xFF1A1A1A).copy(alpha = 0.7f)
+                ),
+                shape = RoundedCornerShape(4.dp),
+                border = BorderStroke(1.dp, Color.Gray.copy(alpha = 0.3f))
+            ) {
+                FeedbackListScreen(
+                    viewModel = supportViewModel,
+                    onClose = { supportViewModel.hideFeedbackList() }
+                )
+            }
+        }
+    }
+
+    // 管理员回复弹窗 - 使用全局弹窗系统，真正占据整个应用屏幕95%，居中显示
+    SimplePopup(
+        visibleProvider = { uiState.showAdminReplyDialog },
+        onDismissRequest = { supportViewModel.hideAdminReplyDialog() }
+    ) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth(0.6f)
                     .fillMaxHeight(0.6f),
                 colors = CardDefaults.cardColors(
-                    containerColor = Color(0xFF1A1A1A)
+                    containerColor = Color(0xFF1A1A1A).copy(alpha = 0.7f)
                 ),
                 shape = RoundedCornerShape(12.dp)
             ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(20.dp)
-                ) {
-                    // 标题
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "回复反馈",
-                            color = Color(0xFFFFD700),
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-
-                        IconButton(
-                            onClick = onDismiss,
-                            modifier = Modifier.size(28.dp)
-                        ) {
-                            Text(
-                                text = "✕",
-                                color = Color.Gray,
-                                fontSize = 16.sp
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    // 反馈信息
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(
-                            containerColor = Color(0xFF2C3E50).copy(alpha = 0.3f)
-                        )
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(12.dp)
-                        ) {
-                            Text(
-                                text = feedback.title,
-                                color = Color.White,
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = feedback.description,
-                                color = Color.Gray,
-                                fontSize = 14.sp,
-                                maxLines = 3,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    // 回复输入框
-                    Text(
-                        text = "回复内容",
-                        color = Color(0xFFFFD700),
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    OutlinedTextField(
-                        value = replyText,
-                        onValueChange = onReplyTextChange,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f),
-                        placeholder = {
-                            Text(
-                                "请输入回复内容...",
-                                color = Color.Gray
-                            )
+                uiState.selectedFeedback?.let { feedback ->
+                    AdminReplyDialogContent(
+                        feedback = feedback,
+                        replyText = uiState.adminReplyText,
+                        onReplyTextChange = { supportViewModel.updateAdminReplyText(it) },
+                        onConfirm = {
+                            supportViewModel.replyToFeedback(
+                                feedback.id,
+                                uiState.adminReplyText
+                            ) { success ->
+                                if (success) {
+                                    supportViewModel.hideAdminReplyDialog()
+                                    // 触发反馈数据刷新
+                                    supportViewModel.triggerFeedbackRefresh()
+                                }
+                            }
                         },
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = Color(0xFFFFD700),
-                            unfocusedBorderColor = Color.Gray,
-                            focusedTextColor = Color.White,
-                            unfocusedTextColor = Color.White
-                        ),
-                        shape = RoundedCornerShape(8.dp)
+                        onDismiss = { supportViewModel.hideAdminReplyDialog() }
                     )
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    // 底部按钮
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Button(
-                            onClick = onDismiss,
-                            modifier = Modifier.weight(1f),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Color.Gray
-                            ),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Text("取消", color = Color.White, fontSize = 14.sp)
-                        }
-
-                        Button(
-                            onClick = onConfirm,
-                            modifier = Modifier.weight(1f),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Color(0xFF4285F4)
-                            ),
-                            shape = RoundedCornerShape(8.dp),
-                            enabled = replyText.isNotBlank()
-                        ) {
-                            Text("确认回复", color = Color.White, fontSize = 14.sp)
-                        }
-                    }
                 }
             }
         }

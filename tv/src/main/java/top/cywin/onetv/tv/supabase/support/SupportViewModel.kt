@@ -394,7 +394,14 @@ class SupportViewModel(application: Application) : AndroidViewModel(application)
             }
         }
     }
-    
+
+    /**
+     * 触发反馈数据刷新
+     */
+    fun triggerFeedbackRefresh() {
+        loadUserFeedbackList()
+    }
+
     /**
      * 显示客服对话界面
      */
@@ -456,6 +463,35 @@ class SupportViewModel(application: Application) : AndroidViewModel(application)
             showFeedbackDetail = false,
             selectedFeedback = null
         )
+    }
+
+    /**
+     * 显示管理员回复弹窗
+     */
+    fun showAdminReplyDialog(feedback: UserFeedback) {
+        _uiState.value = _uiState.value.copy(
+            showAdminReplyDialog = true,
+            selectedFeedback = feedback,
+            adminReplyText = ""
+        )
+    }
+
+    /**
+     * 隐藏管理员回复弹窗
+     */
+    fun hideAdminReplyDialog() {
+        _uiState.value = _uiState.value.copy(
+            showAdminReplyDialog = false,
+            selectedFeedback = null,
+            adminReplyText = ""
+        )
+    }
+
+    /**
+     * 更新管理员回复文本
+     */
+    fun updateAdminReplyText(text: String) {
+        _uiState.value = _uiState.value.copy(adminReplyText = text)
     }
 
     /**
