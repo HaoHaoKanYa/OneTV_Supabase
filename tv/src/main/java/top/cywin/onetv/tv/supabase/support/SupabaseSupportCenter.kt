@@ -823,18 +823,10 @@ private fun ChatStartContent(
                 .fillMaxHeight(),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // 统计信息区域 - 改为水平排版
-            if (conversationStats.isNotEmpty()) {
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    StatItemHorizontal("总对话", conversationStats["total"] ?: 0)
-                    StatItemHorizontal("进行中", conversationStats["open"] ?: 0)
-                    StatItemHorizontal("已完成", conversationStats["closed"] ?: 0)
-                }
+            // 统计信息区域 - 固定字段，只加载数据
+            ConversationStatsPanel(conversationStats)
 
-                Spacer(modifier = Modifier.height(8.dp))
-            }
+            Spacer(modifier = Modifier.height(8.dp))
 
             // 刷新按钮
             Button(
@@ -990,6 +982,81 @@ private fun StatItemTwoColumn(
                 fontSize = 11.sp
             )
         }
+    }
+}
+
+/**
+ * 固定字段统计组件 - 客服对话专用
+ */
+@Composable
+private fun ConversationStatsPanel(stats: Map<String, Any>) {
+    Column(
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        StatItemHorizontal("总对话", (stats["total"] as? Int) ?: 0)
+        StatItemHorizontal("进行中", (stats["open"] as? Int) ?: 0)
+        StatItemHorizontal("已完成", (stats["closed"] as? Int) ?: 0)
+    }
+}
+
+/**
+ * 固定字段统计组件 - 提交反馈专用
+ */
+@Composable
+private fun SubmitFeedbackStatsPanel(stats: Map<String, Any>) {
+    Column(
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        StatItemHorizontal("已提交", (stats["total"] as? Int) ?: 0)
+        StatItemHorizontal("处理中", (stats["reviewing"] as? Int) ?: 0)
+        StatItemHorizontal("已解决", (stats["resolved"] as? Int) ?: 0)
+    }
+}
+
+/**
+ * 固定字段统计组件 - 我的反馈专用
+ */
+@Composable
+private fun MyFeedbackStatsPanel(stats: Map<String, Any>) {
+    Column(
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        StatItemHorizontal("总数", (stats["total"] as? Int) ?: 0)
+        StatItemHorizontal("处理中", (stats["reviewing"] as? Int) ?: 0)
+        StatItemHorizontal("已解决", (stats["resolved"] as? Int) ?: 0)
+    }
+}
+
+/**
+ * 固定字段统计组件 - 用户管理专用
+ */
+@Composable
+private fun UserManagementStatsPanel(stats: Map<String, Any>) {
+    Column(
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        StatItemHorizontal("总用户", (stats["total"] as? Int) ?: 0)
+        StatItemHorizontal("VIP用户", (stats["vip"] as? Int) ?: 0)
+        StatItemHorizontal("管理员", (stats["admin"] as? Int) ?: 0)
+    }
+}
+
+/**
+ * 固定字段统计组件 - 反馈管理专用（二列布局）
+ */
+@Composable
+private fun FeedbackManagementStatsPanel(stats: Map<String, Any>) {
+    Column(
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        StatItemTwoColumn(
+            "总反馈", (stats["total"] as? Int) ?: 0,
+            "处理中", (stats["reviewing"] as? Int) ?: 0
+        )
+        StatItemTwoColumn(
+            "待处理", (stats["submitted"] as? Int) ?: 0,
+            "已解决", (stats["resolved"] as? Int) ?: 0
+        )
     }
 }
 
@@ -1187,18 +1254,10 @@ private fun FeedbackStartContent(
                 .fillMaxHeight(),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // 统计信息区域 - 改为水平排版
-            if (feedbackStats.isNotEmpty()) {
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    StatItemHorizontal("已提交", feedbackStats["total"] ?: 0)
-                    StatItemHorizontal("处理中", feedbackStats["reviewing"] ?: 0)
-                    StatItemHorizontal("已解决", feedbackStats["resolved"] ?: 0)
-                }
+            // 统计信息区域 - 固定字段，只加载数据
+            SubmitFeedbackStatsPanel(feedbackStats)
 
-                Spacer(modifier = Modifier.height(8.dp))
-            }
+            Spacer(modifier = Modifier.height(8.dp))
 
             // 刷新按钮
             Button(
@@ -1585,18 +1644,10 @@ private fun MyFeedbackContent(
                 .fillMaxHeight(),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // 统计信息区域 - 改为水平排版
-            if (feedbackStats.isNotEmpty()) {
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    StatItemHorizontal("总数", feedbackStats["total"] ?: 0)
-                    StatItemHorizontal("处理中", feedbackStats["reviewing"] ?: 0)
-                    StatItemHorizontal("已解决", feedbackStats["resolved"] ?: 0)
-                }
+            // 统计信息区域 - 固定字段，只加载数据
+            MyFeedbackStatsPanel(feedbackStats)
 
-                Spacer(modifier = Modifier.height(8.dp))
-            }
+            Spacer(modifier = Modifier.height(8.dp))
 
             // 刷新按钮
             Button(
@@ -2022,18 +2073,10 @@ private fun UserManagementContent(
                 .fillMaxHeight(),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // 统计信息区域 - 改为水平排版
-            if (userStats.isNotEmpty()) {
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    StatItemHorizontal("总用户", (userStats["total"] as? Int) ?: 0)
-                    StatItemHorizontal("VIP用户", (userStats["vip"] as? Int) ?: 0)
-                    StatItemHorizontal("管理员", (userStats["admin"] as? Int) ?: 0)
-                }
+            // 统计信息区域 - 固定字段，只加载数据
+            UserManagementStatsPanel(userStats)
 
-                Spacer(modifier = Modifier.height(8.dp))
-            }
+            Spacer(modifier = Modifier.height(8.dp))
 
             // 刷新按钮
             Button(
@@ -2971,23 +3014,10 @@ private fun FeedbackManagementContent(
                 .fillMaxHeight(),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // 统计信息区域 - 改为二列排版
-            if (feedbackStats.isNotEmpty()) {
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    StatItemTwoColumn(
-                        "总反馈", (feedbackStats["total"] as? Int) ?: 0,
-                        "处理中", (feedbackStats["reviewing"] as? Int) ?: 0
-                    )
-                    StatItemTwoColumn(
-                        "待处理", (feedbackStats["submitted"] as? Int) ?: 0,
-                        "已解决", (feedbackStats["resolved"] as? Int) ?: 0
-                    )
-                }
+            // 统计信息区域 - 固定字段，只加载数据
+            FeedbackManagementStatsPanel(feedbackStats)
 
-                Spacer(modifier = Modifier.height(8.dp))
-            }
+            Spacer(modifier = Modifier.height(8.dp))
 
             // 筛选按钮组 - 改为二列排版
             val statusOptions = listOf(
@@ -3017,8 +3047,8 @@ private fun FeedbackManagementContent(
                             },
                             modifier = Modifier
                                 .weight(1f)
-                                .height(28.dp),
-                            shape = RoundedCornerShape(14.dp),
+                                .height(32.dp),
+                            shape = RoundedCornerShape(16.dp),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = if (status == "refresh") {
                                     Color(0xFF4285F4).copy(alpha = 0.8f)
@@ -3032,8 +3062,10 @@ private fun FeedbackManagementContent(
                             Text(
                                 text = if (status == "refresh") "🔄" else label,
                                 color = if (status == "refresh" || filterStatus != status) Color.White else Color.Black,
-                                fontSize = 9.sp,
-                                fontWeight = if (filterStatus == status) FontWeight.Bold else FontWeight.Normal
+                                fontSize = 10.sp,
+                                fontWeight = if (filterStatus == status) FontWeight.Bold else FontWeight.Normal,
+                                maxLines = 1,
+                                textAlign = TextAlign.Center
                             )
                         }
                     }
