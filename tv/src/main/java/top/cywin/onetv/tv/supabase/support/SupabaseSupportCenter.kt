@@ -3029,7 +3029,7 @@ private fun FeedbackManagementContent(
             statusOptions.forEach { rowOptions ->
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     rowOptions.forEach { (status, label) ->
                         Button(
@@ -3047,8 +3047,9 @@ private fun FeedbackManagementContent(
                             },
                             modifier = Modifier
                                 .weight(1f)
-                                .height(32.dp),
-                            shape = RoundedCornerShape(16.dp),
+                                .height(36.dp)
+                                .padding(horizontal = 1.dp),
+                            shape = RoundedCornerShape(18.dp),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = if (status == "refresh") {
                                     Color(0xFF4285F4).copy(alpha = 0.8f)
@@ -3057,15 +3058,17 @@ private fun FeedbackManagementContent(
                                 } else {
                                     Color(0xFF4285F4).copy(alpha = 0.6f)
                                 }
-                            )
+                            ),
+                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp)
                         ) {
                             Text(
                                 text = if (status == "refresh") "🔄" else label,
                                 color = if (status == "refresh" || filterStatus != status) Color.White else Color.Black,
-                                fontSize = 10.sp,
+                                fontSize = 9.sp,
                                 fontWeight = if (filterStatus == status) FontWeight.Bold else FontWeight.Normal,
                                 maxLines = 1,
-                                textAlign = TextAlign.Center
+                                textAlign = TextAlign.Center,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     }
@@ -3122,6 +3125,49 @@ fun SupportStatItem(
             color = Color.White.copy(alpha = 0.8f),
             fontSize = 12.sp
         )
+    }
+}
+
+/**
+ * 固定字段客服工作台概览组件 - 字段和图标固定，只加载数据
+ */
+@Composable
+private fun SupportDeskOverviewPanel(stats: Map<String, Any>) {
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(3),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        // 固定的统计项配置
+        val fixedStatsConfig = listOf(
+            Triple("active_conversations", "💬", "活跃对话") to Color(0xFFFFD700),
+            Triple("pending_conversations", "⏳", "待处理对话") to Color(0xFFFF6B6B),
+            Triple("resolved_today", "✅", "今日已解决") to Color(0xFF4ECDC4),
+            Triple("online_agents", "👥", "在线客服") to Color(0xFF45B7D1),
+            Triple("total_agents", "👤", "总客服数") to Color(0xFFFFD700),
+            Triple("customer_satisfaction", "⭐", "满意度") to Color(0xFFFFD700)
+        )
+
+        fixedStatsConfig.forEach { (config, color) ->
+            val (key, icon, title) = config
+            item {
+                SupportStatItem(
+                    title = title,
+                    value = when (key) {
+                        "customer_satisfaction" -> {
+                            val value = (stats[key] as? Number)?.toDouble() ?: 0.0
+                            "${value}★"
+                        }
+                        else -> {
+                            val value = (stats[key] as? Number)?.toInt() ?: 0
+                            value.toString()
+                        }
+                    },
+                    icon = icon,
+                    color = color
+                )
+            }
+        }
     }
 }
 
@@ -3353,58 +3399,8 @@ private fun SupportDeskOverview(stats: Map<String, Any>) {
             fontWeight = FontWeight.SemiBold
         )
 
-        if (stats.isNotEmpty()) {
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(3),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                val statsToShow = listOf(
-                    "active_conversations" to "活跃对话",
-                    "pending_conversations" to "待处理对话",
-                    "resolved_today" to "今日已解决",
-                    "online_agents" to "在线客服",
-                    "total_agents" to "总客服数",
-                    "customer_satisfaction" to "满意度"
-                )
-
-                statsToShow.forEach { (key, label) ->
-                    val value = stats[key]
-                    if (value != null) {
-                        item {
-                            SupportStatItem(
-                                title = label,
-                                value = when (key) {
-                                    "customer_satisfaction" -> "${value}★"
-                                    else -> value.toString()
-                                },
-                                icon = when (key) {
-                                    "active_conversations" -> "💬"
-                                    "pending_conversations" -> "⏳"
-                                    "resolved_today" -> "✅"
-                                    "online_agents" -> "👥"
-                                    "total_agents" -> "👤"
-                                    "customer_satisfaction" -> "⭐"
-                                    else -> "📊"
-                                },
-                                color = when (key) {
-                                    "pending_conversations" -> Color(0xFFFF6B6B)
-                                    "resolved_today" -> Color(0xFF4ECDC4)
-                                    "online_agents" -> Color(0xFF45B7D1)
-                                    else -> Color(0xFFFFD700)
-                                }
-                            )
-                        }
-                    }
-                }
-            }
-        } else {
-            Text(
-                text = "暂无统计数据",
-                color = Color.Gray,
-                fontSize = 14.sp
-            )
-        }
+        // 使用固定字段概览面板 - 字段和图标固定，只加载数据
+        SupportDeskOverviewPanel(stats)
     }
 }
 
