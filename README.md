@@ -34,16 +34,6 @@ OneTV Supabase是一款现代化的Android电视应用，专为提供流畅的�
 
 
 
-- [ ] 桌面平台支持
-- [ ] 高级VIP功能
-- [ ] 直播功能
-- [ ] AI内容推荐与搜索
-- [ ] 云同步和多设备功能增强
-
-详细路线图请参考[PROJECT_ROADMAP.md](MD/PROJECT_ROADMAP.md)
-
-## 📋 环境要求
-
 - Android Studio 2023.3.1 或更高版本
 - JDK 17+
 - Gradle 8.6+
