@@ -13,7 +13,7 @@ import kotlinx.serialization.json.contentOrNull
  * 负责从Supabase服务获取用户数据
  */
 class SupabaseUserRepository {
-    private val apiClient = SupabaseApiClient()
+    private val apiClient = SupabaseApiClient.getInstance()
     private val TAG = "SupabaseUserRepository"
 
     /**

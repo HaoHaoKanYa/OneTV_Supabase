@@ -212,7 +212,7 @@ fun SupabaseUserSettings(
                     }
                     
                     // 使用SupabaseApiClient保存设置
-                    val apiClient = SupabaseApiClient()
+                    val apiClient = SupabaseApiClient.getInstance()
                     val response = apiClient.updateUserSettings(settings)
                     
                     // 处理响应
@@ -503,7 +503,7 @@ suspend fun loadUserSettings(
 ): UserSettings {
     return try {
         // 使用SupabaseApiClient获取用户设置
-        val apiClient = SupabaseApiClient()
+        val apiClient = SupabaseApiClient.getInstance()
         val response = apiClient.getUserSettings()
         
         // 从响应中获取设置

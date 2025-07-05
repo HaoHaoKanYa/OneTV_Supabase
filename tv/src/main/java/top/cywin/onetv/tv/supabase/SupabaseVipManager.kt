@@ -147,7 +147,10 @@ fun SupabaseVipManager(
                                 
                                 // 保存到缓存
                                 SupabaseCacheManager.saveCache(context, SupabaseCacheKey.USER_VIP_STATUS, newVipStatus)
-                                
+
+                                // ✅ VIP状态更新时，刷新用户权限相关缓存
+                                SupabaseCacheManager.refreshUserPermissionCache(context)
+
                                 withContext(Dispatchers.Main) {
                                     vipStatus = newVipStatus
                                     statusMessage = "VIP状态已更新" to true
@@ -296,6 +299,10 @@ fun SupabaseVipManager(
                                     // 使缓存失效，确保下次加载时获取最新数据
                                     SupabaseCacheManager.clearCache(context, SupabaseCacheKey.USER_VIP_STATUS)
                                     SupabaseCacheManager.clearCache(context, SupabaseCacheKey.USER_DATA)
+
+                                    // ✅ VIP激活成功时，刷新用户权限相关缓存
+                                    SupabaseCacheManager.refreshUserPermissionCache(context)
+
                                     Log.d(TAG, "已使用户资料缓存失效，下次将从服务器获取最新数据")
                                     
                                     // 刷新VIP状态
