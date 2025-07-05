@@ -34,14 +34,6 @@ OneTV Supabase是一款现代化的Android电视应用，专为提供流畅的�
 
 
 
-- [更新日志](MD/CHANGELOG.md)
-- [迁移指南](MD/MIGRATION_GUIDE.md)
-- [观看历史优化总结](MD/观看历史上传优化总结.md)
-- [登录优化总结](MD/LoginOptimizationSummary.md)
-- [用户协议与免责声明](tv/src/main/assets/User_Agreement_And_Disclaimer.md)
-
-## 🤝 贡献指南
-
 欢迎贡献代码、报告问题或提出功能建议。请参阅[CONTRIBUTING.md](CONTRIBUTING.md)了解详细的贡献流程。
 
 ## 📢 免责声明
