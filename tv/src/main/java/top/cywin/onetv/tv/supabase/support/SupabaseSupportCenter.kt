@@ -8,6 +8,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -44,10 +45,10 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import kotlinx.coroutines.launch
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -543,17 +544,10 @@ private fun SupportContentPanel(
             }
             "conversation_management" -> ConversationManagementContent(supportViewModel = supportViewModel)
             "user_management" -> {
-                if (uiState.showUserManagement) {
-                    UserManagementScreen(
-                        viewModel = supportViewModel,
-                        onClose = { supportViewModel.hideUserManagement() }
-                    )
-                } else {
-                    UserManagementContent(
-                        onOpenUserManagement = { supportViewModel.showUserManagement() },
-                        supportViewModel = supportViewModel
-                    )
-                }
+                UserManagementContent(
+                    onOpenUserManagement = { /* 不需要打开详细界面 */ },
+                    supportViewModel = supportViewModel
+                )
             }
             "feedback_management" -> FeedbackManagementContent(supportViewModel = supportViewModel)
             "support_desk" -> SupportDeskContent(supportViewModel = supportViewModel)
@@ -1036,9 +1030,9 @@ private fun ConversationStatsPanel(stats: Map<String, Any>) {
     Column(
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        StatItemHorizontal("总对话", (stats["total"] as? Int) ?: 0)
-        StatItemHorizontal("进行中", (stats["open"] as? Int) ?: 0)
-        StatItemHorizontal("已完成", (stats["closed"] as? Int) ?: 0)
+        StatItemHorizontal("总对话", (stats["total_conversations"] as? Int) ?: 0)
+        StatItemHorizontal("进行中", (stats["active_conversations"] as? Int) ?: 0)
+        StatItemHorizontal("已关闭", (stats["closed_conversations"] as? Int) ?: 0)
     }
 }
 
@@ -1943,6 +1937,12 @@ private fun MyFeedbackHistoryItem(
     }
 }
 
+
+
+
+
+
+
 /**
  * 用户管理内容 - 优化版本
  */
@@ -2160,7 +2160,7 @@ private fun UserManagementContent(
                 )
             }
 
-            // 搜索框
+            // 搜索框 - 优化版本，调整尺寸和内边距
             if (showSearchField) {
                 OutlinedTextField(
                     value = searchQuery,
@@ -2169,21 +2169,29 @@ private fun UserManagementContent(
                         Text(
                             "搜索用户...",
                             color = Color.Gray,
-                            fontSize = 10.sp
+                            fontSize = 12.sp
                         )
                     },
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .height(35.dp),
+                        .width(160.dp)  // 稍微增加宽度
+                        .height(40.dp) // 增加高度以容纳文字
+                        .background(
+                            color = Color(0xFF2A2A2A),
+                            shape = RoundedCornerShape(8.dp)
+                        ), // 添加背景色确保文字可见
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = Color(0xFFFFD700),
                         unfocusedBorderColor = Color.Gray,
                         focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White
+                        unfocusedTextColor = Color.White,
+                        cursorColor = Color.White // 设置光标颜色
                     ),
                     singleLine = true,
-                    textStyle = TextStyle(fontSize = 10.sp),
-                    shape = RoundedCornerShape(17.dp)
+                    textStyle = TextStyle(
+                        fontSize = 12.sp,  // 增加字体大小
+                        color = Color.White // 明确设置文字颜色
+                    ),
+                    shape = RoundedCornerShape(8.dp)
                 )
             }
         }
@@ -2291,11 +2299,11 @@ private fun CompactUserRow(
                         },
                         onClick = {
                             showRoleMenu = false
-                            if (isCurrentRole && roleType != "user") {
-                                // 取消当前角色，设为普通用户
+                            if (roleType == "user") {
+                                // 设置为普通用户，移除所有角色
                                 onRoleChange("user")
                             } else {
-                                // 设置新角色
+                                // 添加或移除特定角色
                                 onRoleChange(roleType)
                             }
                         }
@@ -2593,175 +2601,7 @@ private fun UserListItem(
     }
 }
 
-/**
- * 用户管理详细界面
- */
-@Composable
-private fun UserManagementScreen(
-    viewModel: SupportViewModel,
-    onClose: () -> Unit
-) {
-    var users by remember { mutableStateOf<List<UserProfile>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(true) }
-    var searchQuery by remember { mutableStateOf("") }
-    var selectedRole by remember { mutableStateOf("all") }
 
-    LaunchedEffect(Unit) {
-        viewModel.getAllUsers { userList ->
-            users = userList
-            isLoading = false
-        }
-    }
-
-    // 过滤用户
-    val filteredUsers = users.filter { user ->
-        val matchesSearch = searchQuery.isEmpty() ||
-            user.username?.contains(searchQuery, ignoreCase = true) == true ||
-            user.email?.contains(searchQuery, ignoreCase = true) == true
-
-        val matchesRole = selectedRole == "all" || user.roles.contains(selectedRole)
-
-        matchesSearch && matchesRole
-    }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
-    ) {
-        // 顶部工具栏
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "用户管理",
-                color = Color(0xFFFFD700),
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Bold
-            )
-
-            Button(
-                onClick = onClose,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color.Red.copy(alpha = 0.7f)
-                )
-            ) {
-                Text("关闭", color = Color.White)
-            }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // 搜索和过滤栏
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            // 搜索框
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it },
-                label = { Text("搜索用户", color = Color.Gray) },
-                modifier = Modifier.weight(1f),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedTextColor = Color.White,
-                    unfocusedTextColor = Color.White,
-                    focusedBorderColor = Color(0xFFFFD700),
-                    unfocusedBorderColor = Color.Gray
-                )
-            )
-
-            // 角色过滤
-            var expanded by remember { mutableStateOf(false) }
-            Box {
-                Button(
-                    onClick = { expanded = true },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF4285F4).copy(alpha = 0.8f)
-                    )
-                ) {
-                    Text(
-                        text = when (selectedRole) {
-                            "all" -> "全部角色"
-                            "super_admin" -> "超级管理员"
-                            "admin" -> "管理员"
-                            "support" -> "客服"
-                            "moderator" -> "版主"
-                            "vip" -> "VIP用户"
-                            else -> selectedRole
-                        },
-                        color = Color.White
-                    )
-                }
-
-                DropdownMenu(
-                    expanded = expanded,
-                    onDismissRequest = { expanded = false }
-                ) {
-                    listOf(
-                        "all" to "全部角色",
-                        "super_admin" to "超级管理员",
-                        "admin" to "管理员",
-                        "support" to "客服",
-                        "moderator" to "版主",
-                        "vip" to "VIP用户"
-                    ).forEach { (role, label) ->
-                        DropdownMenuItem(
-                            text = { Text(label) },
-                            onClick = {
-                                selectedRole = role
-                                expanded = false
-                            }
-                        )
-                    }
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // 用户列表
-        Card(
-            modifier = Modifier.fillMaxSize(),
-            colors = CardDefaults.cardColors(
-                containerColor = Color(0xFF1A1A1A).copy(alpha = 0.3f)
-            ),
-            shape = RoundedCornerShape(12.dp)
-        ) {
-            if (isLoading) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator(color = Color(0xFFFFD700))
-                }
-            } else {
-                LazyColumn(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    items(filteredUsers) { user ->
-                        UserManagementItem(
-                            user = user,
-                            onRoleChange = { newRole ->
-                                viewModel.updateUserRole(user.id, newRole) { success ->
-                                    if (success) {
-                                        // 重新加载用户列表
-                                        viewModel.getAllUsers { userList ->
-                                            users = userList
-                                        }
-                                    }
-                                }
-                            }
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
 
 /**
  * 用户管理项组件
@@ -2901,7 +2741,11 @@ private fun UserManagementItem(
                 availableRoles.forEach { (role, label) ->
                     val hasRole = user.roles.contains(role)
                     Button(
-                        onClick = { onRoleChange(role) },
+                        onClick = {
+                            // 无论添加还是移除，都传递具体的角色
+                            // Repository会根据用户当前是否有该角色来决定添加或移除
+                            onRoleChange(role)
+                        },
                         colors = ButtonDefaults.buttonColors(
                             containerColor = if (hasRole) {
                                 Color.Red.copy(alpha = 0.7f)
@@ -3736,7 +3580,7 @@ private fun FeedbackProcessing(feedbacks: List<UserFeedback>) {
                             }
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = feedback.feedbackType,
+                                text = feedback.getTypeText(),
                                 color = Color(0xFFFFD700),
                                 fontSize = 12.sp
                             )
@@ -4100,8 +3944,8 @@ fun FeedbackDetailDialog(
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 InfoRow("标题", feedback.title)
-                                InfoRow("类型", feedback.feedbackType)
-                                InfoRow("状态", feedback.status)
+                                InfoRow("类型", feedback.getTypeText())
+                                InfoRow("状态", feedback.getStatusText())
                                 InfoRow("提交时间", feedback.getFormattedCreatedTime())
                                 InfoRow("用户ID", feedback.userId)
                             }
@@ -4771,12 +4615,22 @@ fun SupportFullScreenDialogs(
             Card(
                 modifier = Modifier
                     .fillMaxWidth(0.6f)
-                    .fillMaxHeight(0.95f),
+                    .fillMaxHeight(0.95f)
+                    .border(
+                        width = 2.dp,
+                        brush = Brush.linearGradient(
+                            colors = listOf(
+                                Color(0xFF4285F4),  // 蓝色
+                                Color(0xFF34A853),  // 绿色
+                                Color(0xFFFFD700)   // 金色
+                            )
+                        ),
+                        shape = RoundedCornerShape(12.dp)
+                    ),
                 colors = CardDefaults.cardColors(
                     containerColor = Color(0xFF1A1A1A).copy(alpha = 0.7f)
                 ),
-                shape = RoundedCornerShape(4.dp),
-                border = BorderStroke(1.dp, Color.Gray.copy(alpha = 0.3f))
+                shape = RoundedCornerShape(12.dp)
             ) {
                 SupportConversationScreen(
                     viewModel = supportViewModel,
@@ -4798,12 +4652,22 @@ fun SupportFullScreenDialogs(
             Card(
                 modifier = Modifier
                     .fillMaxWidth(0.6f)
-                    .fillMaxHeight(0.95f),
+                    .fillMaxHeight(0.95f)
+                    .border(
+                        width = 2.dp,
+                        brush = Brush.linearGradient(
+                            colors = listOf(
+                                Color(0xFFFF6B6B),  // 红色
+                                Color(0xFFFFD700),  // 金色
+                                Color(0xFF4ECDC4)   // 青色
+                            )
+                        ),
+                        shape = RoundedCornerShape(12.dp)
+                    ),
                 colors = CardDefaults.cardColors(
                     containerColor = Color(0xFF1A1A1A).copy(alpha = 0.7f)
                 ),
-                shape = RoundedCornerShape(4.dp),
-                border = BorderStroke(1.dp, Color.Gray.copy(alpha = 0.3f))
+                shape = RoundedCornerShape(12.dp)
             ) {
                 FeedbackFormScreen(
                     viewModel = supportViewModel,
@@ -4828,12 +4692,18 @@ fun SupportFullScreenDialogs(
                     .fillMaxHeight(0.95f)
                     .background(
                         color = Color(0xFF1A1A1A).copy(alpha = 0.7f),
-                        shape = RoundedCornerShape(4.dp)
+                        shape = RoundedCornerShape(12.dp)
                     )
                     .border(
-                        width = 1.dp,
-                        color = Color.Gray.copy(alpha = 0.3f),
-                        shape = RoundedCornerShape(4.dp)
+                        width = 2.dp,
+                        brush = Brush.linearGradient(
+                            colors = listOf(
+                                Color(0xFF9C27B0),  // 紫色
+                                Color(0xFF2196F3),  // 蓝色
+                                Color(0xFF00BCD4)   // 青色
+                            )
+                        ),
+                        shape = RoundedCornerShape(12.dp)
                     )
             ) {
                 uiState.selectedFeedback?.let { feedback ->
@@ -4866,12 +4736,22 @@ fun SupportFullScreenDialogs(
             Card(
                 modifier = Modifier
                     .fillMaxWidth(0.6f)
-                    .fillMaxHeight(0.95f),
+                    .fillMaxHeight(0.95f)
+                    .border(
+                        width = 2.dp,
+                        brush = Brush.linearGradient(
+                            colors = listOf(
+                                Color(0xFFFF9800),  // 橙色
+                                Color(0xFFFFEB3B),  // 黄色
+                                Color(0xFF8BC34A)   // 绿色
+                            )
+                        ),
+                        shape = RoundedCornerShape(12.dp)
+                    ),
                 colors = CardDefaults.cardColors(
                     containerColor = Color(0xFF1A1A1A).copy(alpha = 0.7f)
                 ),
-                shape = RoundedCornerShape(4.dp),
-                border = BorderStroke(1.dp, Color.Gray.copy(alpha = 0.3f))
+                shape = RoundedCornerShape(12.dp)
             ) {
                 FeedbackListScreen(
                     viewModel = supportViewModel,
@@ -4893,12 +4773,22 @@ fun SupportFullScreenDialogs(
             Card(
                 modifier = Modifier
                     .fillMaxWidth(0.6f)
-                    .fillMaxHeight(0.95f),
+                    .fillMaxHeight(0.95f)
+                    .border(
+                        width = 2.dp,
+                        brush = Brush.linearGradient(
+                            colors = listOf(
+                                Color(0xFFE91E63),  // 粉色
+                                Color(0xFF673AB7),  // 深紫色
+                                Color(0xFF3F51B5)   // 靛蓝色
+                            )
+                        ),
+                        shape = RoundedCornerShape(12.dp)
+                    ),
                 colors = CardDefaults.cardColors(
                     containerColor = Color(0xFF1A1A1A).copy(alpha = 0.7f)
                 ),
-                shape = RoundedCornerShape(4.dp),
-                border = BorderStroke(1.dp, Color.Gray.copy(alpha = 0.3f))
+                shape = RoundedCornerShape(12.dp)
             ) {
                 uiState.selectedFeedback?.let { feedback ->
                     AdminReplyDialogContent(
@@ -4958,12 +4848,22 @@ fun SupportFullScreenDialogs(
             Card(
                 modifier = Modifier
                     .fillMaxWidth(0.6f)
-                    .fillMaxHeight(0.95f),
+                    .fillMaxHeight(0.95f)
+                    .border(
+                        width = 2.dp,
+                        brush = Brush.linearGradient(
+                            colors = listOf(
+                                Color(0xFF795548),  // 棕色
+                                Color(0xFF607D8B),  // 蓝灰色
+                                Color(0xFF009688)   // 青绿色
+                            )
+                        ),
+                        shape = RoundedCornerShape(12.dp)
+                    ),
                 colors = CardDefaults.cardColors(
                     containerColor = Color(0xFF1A1A1A).copy(alpha = 0.7f)
                 ),
-                shape = RoundedCornerShape(4.dp),
-                border = BorderStroke(1.dp, Color.Gray.copy(alpha = 0.3f))
+                shape = RoundedCornerShape(12.dp)
             ) {
                 uiState.selectedConversation?.let { conversation ->
                     AdminChatDialog(

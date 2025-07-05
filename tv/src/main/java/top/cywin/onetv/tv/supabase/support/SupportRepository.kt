@@ -39,6 +39,8 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import io.ktor.client.statement.bodyAsText
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.doubleOrNull
 import top.cywin.onetv.core.data.repositories.supabase.SupabaseClient
 
 private const val TAG = "SupportRepository"
@@ -1268,11 +1270,11 @@ class SupportRepository {
                 .decodeList<JsonObject>()
                 .size
 
-            // 获取VIP用户数（通过profiles表的accountstatus字段查询）
+            // 获取VIP用户数（通过profiles表的is_vip字段查询）
             val vipUsers = client.from("profiles")
                 .select(columns = Columns.list("userid")) {
                     filter {
-                        eq("accountstatus", "VIP")
+                        eq("is_vip", true)
                     }
                 }
                 .decodeList<JsonObject>()
@@ -1318,10 +1320,10 @@ class SupportRepository {
                 return@withContext emptyList()
             }
 
-            // 获取所有用户资料
+            // 获取所有用户资料（包含VIP状态）
             val userProfiles = client.from("profiles")
                 .select(columns = Columns.list(
-                    "userid", "username", "email", "created_at", "updated_at", "accountstatus"
+                    "userid", "username", "email", "created_at", "updated_at", "accountstatus", "is_vip"
                 )) {
                     order("created_at", Order.DESCENDING)
                     limit(limit.toLong())
@@ -1344,16 +1346,17 @@ class SupportRepository {
                 roles.mapNotNull { it["role_type"]?.jsonPrimitive?.contentOrNull }
             }
 
-            // 构建用户列表，包含正确的角色信息
+            // 构建用户列表，包含正确的角色信息和VIP状态
             val users = userProfiles.map { userJson ->
                 val userId = userJson["userid"]?.jsonPrimitive?.contentOrNull ?: ""
                 val userRoles = userRolesMap[userId] ?: listOf("user")
+                val isVip = userJson["is_vip"]?.jsonPrimitive?.booleanOrNull ?: false
 
                 UserProfile(
                     id = userId,
                     username = userJson["username"]?.jsonPrimitive?.contentOrNull ?: "",
                     email = userJson["email"]?.jsonPrimitive?.contentOrNull ?: "",
-                    isVip = userRoles.contains("vip"),
+                    isVip = isVip,  // 使用profiles表中的is_vip字段
                     roles = userRoles,
                     createdAt = userJson["created_at"]?.jsonPrimitive?.contentOrNull ?: ""
                 )
@@ -1368,7 +1371,7 @@ class SupportRepository {
     }
 
     /**
-     * 更新用户角色
+     * 更新用户角色 - 支持多角色系统
      */
     suspend fun updateUserRole(userId: String, role: String): Boolean = withContext(Dispatchers.IO) {
         try {
@@ -1387,40 +1390,33 @@ class SupportRepository {
                 return@withContext false
             }
 
-            // 先删除用户的所有现有角色
-            client.from("user_roles")
-                .delete {
+            // 获取用户当前角色
+            val currentRoles = client.from("user_roles")
+                .select(columns = Columns.list("role_type")) {
                     filter {
                         eq("user_id", userId)
+                        eq("is_active", true)
                     }
                 }
+                .decodeList<JsonObject>()
+                .mapNotNull { it["role_type"]?.jsonPrimitive?.contentOrNull }
 
-            // 如果不是设置为普通用户，则添加新角色
-            if (role != "user") {
+            Log.d(TAG, "用户当前角色: $currentRoles")
+
+            if (role == "user") {
+                // 设置为普通用户，删除所有角色
+                Log.d(TAG, "设置为普通用户，删除所有角色")
                 client.from("user_roles")
-                    .insert(buildJsonObject {
-                        put("user_id", userId)
-                        put("role_type", role)
-                        put("is_active", true)
-                        put("created_at", java.time.LocalDateTime.now().toString())
-                    })
-            }
-
-            // 如果设置为VIP用户，同时更新profiles表的accountstatus
-            if (role == "vip") {
-                client.from("profiles")
-                    .update(buildJsonObject {
-                        put("accountstatus", "VIP")
-                        put("updated_at", java.time.LocalDateTime.now().toString())
-                    }) {
+                    .delete {
                         filter {
-                            eq("userid", userId)
+                            eq("user_id", userId)
                         }
                     }
-            } else if (role == "user") {
-                // 如果设置为普通用户，将accountstatus设为Normal
+
+                // 更新profiles表
                 client.from("profiles")
                     .update(buildJsonObject {
+                        put("is_vip", false)
                         put("accountstatus", "Normal")
                         put("updated_at", java.time.LocalDateTime.now().toString())
                     }) {
@@ -1428,6 +1424,192 @@ class SupportRepository {
                             eq("userid", userId)
                         }
                     }
+            } else {
+                // 添加或移除特定角色
+                if (currentRoles.contains(role)) {
+                    // 移除角色
+                    Log.d(TAG, "ROLE_DELETE_START: 开始移除角色 $role，用户ID: $userId")
+                    Log.d(TAG, "ROLE_DELETE_CURRENT_ROLES: 当前用户角色列表: $currentRoles")
+
+                    // 查询要删除的具体记录
+                    val recordsToDelete = client.from("user_roles")
+                        .select(columns = Columns.list("id", "user_id", "role_type", "is_active")) {
+                            filter {
+                                eq("user_id", userId)
+                                eq("role_type", role)
+                            }
+                        }
+                        .decodeList<JsonObject>()
+
+                    Log.d(TAG, "ROLE_DELETE_RECORDS: 找到要删除的记录: $recordsToDelete")
+
+                    if (recordsToDelete.isEmpty()) {
+                        Log.e(TAG, "ROLE_DELETE_ERROR: 没有找到要删除的角色记录")
+                        return@withContext false
+                    }
+
+                    // 执行删除操作 - 使用物理删除
+                    Log.d(TAG, "ROLE_DELETE_SQL: 执行删除SQL - DELETE FROM user_roles WHERE user_id='$userId' AND role_type='$role'")
+
+                    try {
+                        // 记录当前用户信息
+                        Log.d(TAG, "ROLE_DELETE_USER_INFO: 当前用户ID: ${currentUser.id}")
+                        Log.d(TAG, "ROLE_DELETE_USER_INFO: 当前用户邮箱: ${currentUser.email}")
+
+                        // 尝试使用原始SQL方式删除
+                        Log.d(TAG, "ROLE_DELETE_ATTEMPT: 尝试删除用户角色记录")
+                        Log.d(TAG, "ROLE_DELETE_PARAMS: userId=$userId, role=$role")
+
+                        val deleteResult = client.from("user_roles")
+                            .delete {
+                                filter {
+                                    eq("user_id", userId)
+                                    eq("role_type", role)
+                                }
+                            }
+
+                        Log.d(TAG, "ROLE_DELETE_RESULT: 删除操作返回结果: $deleteResult")
+
+                        // 检查删除结果的类型和内容
+                        Log.d(TAG, "ROLE_DELETE_RESULT_TYPE: 删除结果类型: ${deleteResult?.javaClass?.simpleName}")
+                        Log.d(TAG, "ROLE_DELETE_RESULT_STRING: 删除结果字符串: ${deleteResult.toString()}")
+
+                        // 尝试解析删除结果
+                        if (deleteResult != null) {
+                            try {
+                                val resultJson = deleteResult.toString()
+                                Log.d(TAG, "ROLE_DELETE_RESULT_JSON: $resultJson")
+
+                                // 检查是否包含错误信息
+                                if (resultJson.contains("error", ignoreCase = true)) {
+                                    Log.e(TAG, "ROLE_DELETE_ERROR_IN_RESULT: 删除结果包含错误信息")
+                                }
+                                if (resultJson.contains("permission", ignoreCase = true)) {
+                                    Log.e(TAG, "ROLE_DELETE_PERMISSION_ERROR: 可能是权限问题")
+                                }
+                                if (resultJson.contains("policy", ignoreCase = true)) {
+                                    Log.e(TAG, "ROLE_DELETE_POLICY_ERROR: 可能是RLS策略问题")
+                                }
+                            } catch (parseException: Exception) {
+                                Log.w(TAG, "ROLE_DELETE_PARSE_ERROR: 无法解析删除结果", parseException)
+                            }
+                        }
+
+                    } catch (e: Exception) {
+                        Log.e(TAG, "ROLE_DELETE_EXCEPTION: 删除操作异常", e)
+                        Log.e(TAG, "ROLE_DELETE_EXCEPTION_MESSAGE: ${e.message}")
+                        Log.e(TAG, "ROLE_DELETE_EXCEPTION_CAUSE: ${e.cause}")
+                        Log.e(TAG, "ROLE_DELETE_EXCEPTION_STACK: ${e.stackTraceToString()}")
+                        return@withContext false
+                    }
+
+                    // 等待数据库操作完成
+                    kotlinx.coroutines.delay(200)
+
+                    // 验证删除结果 - 查询所有记录（包括非活跃的）
+                    val allRecordsAfterDelete = client.from("user_roles")
+                        .select(columns = Columns.list("id", "user_id", "role_type", "is_active")) {
+                            filter {
+                                eq("user_id", userId)
+                                eq("role_type", role)
+                            }
+                        }
+                        .decodeList<JsonObject>()
+
+                    Log.d(TAG, "ROLE_DELETE_VERIFY_ALL: 删除后所有相关记录: $allRecordsAfterDelete")
+
+                    // 验证活跃角色列表
+                    val activeRolesAfterDelete = client.from("user_roles")
+                        .select(columns = Columns.list("role_type")) {
+                            filter {
+                                eq("user_id", userId)
+                                eq("is_active", true)
+                            }
+                        }
+                        .decodeList<JsonObject>()
+                        .mapNotNull { it["role_type"]?.jsonPrimitive?.contentOrNull }
+
+                    Log.d(TAG, "ROLE_DELETE_VERIFY_ACTIVE: 删除后活跃角色列表: $activeRolesAfterDelete")
+
+                    // 检查删除是否成功
+                    if (allRecordsAfterDelete.isNotEmpty()) {
+                        Log.e(TAG, "ROLE_DELETE_FAILED: 物理删除失败，记录仍然存在")
+                        Log.e(TAG, "ROLE_DELETE_FAILED_RECORDS: 仍存在的记录: $allRecordsAfterDelete")
+
+                        // 尝试使用ID直接删除
+                        Log.d(TAG, "ROLE_DELETE_RETRY: 尝试使用记录ID直接删除")
+                        for (record in allRecordsAfterDelete) {
+                            val recordId = record["id"]?.jsonPrimitive?.contentOrNull
+                            if (recordId != null) {
+                                try {
+                                    Log.d(TAG, "ROLE_DELETE_BY_ID: 尝试删除记录ID: $recordId")
+                                    val deleteByIdResult = client.from("user_roles")
+                                        .delete {
+                                            filter {
+                                                eq("id", recordId)
+                                            }
+                                        }
+                                    Log.d(TAG, "ROLE_DELETE_BY_ID_RESULT: $deleteByIdResult")
+                                } catch (idDeleteException: Exception) {
+                                    Log.e(TAG, "ROLE_DELETE_BY_ID_ERROR: 通过ID删除失败", idDeleteException)
+                                }
+                            }
+                        }
+
+                        // 再次验证
+                        kotlinx.coroutines.delay(200)
+                        val finalCheck = client.from("user_roles")
+                            .select(columns = Columns.list("id", "user_id", "role_type", "is_active")) {
+                                filter {
+                                    eq("user_id", userId)
+                                    eq("role_type", role)
+                                }
+                            }
+                            .decodeList<JsonObject>()
+
+                        Log.d(TAG, "ROLE_DELETE_FINAL_CHECK: 最终检查结果: $finalCheck")
+
+                        if (finalCheck.isNotEmpty()) {
+                            Log.e(TAG, "ROLE_DELETE_ULTIMATE_FAILURE: 所有删除方法都失败")
+                            return@withContext false
+                        } else {
+                            Log.d(TAG, "ROLE_DELETE_SUCCESS_RETRY: 通过重试删除成功")
+                        }
+                    } else {
+                        Log.d(TAG, "ROLE_DELETE_SUCCESS: 角色 $role 物理删除成功")
+                    }
+                } else {
+                    // 添加角色
+                    Log.d(TAG, "添加角色: $role")
+                    client.from("user_roles")
+                        .insert(buildJsonObject {
+                            put("user_id", userId)
+                            put("role_type", role)
+                            put("is_active", true)
+                            put("created_at", java.time.LocalDateTime.now().toString())
+                        })
+                }
+
+                // 更新profiles表的VIP状态
+                val updatedRoles = if (currentRoles.contains(role)) {
+                    currentRoles - role
+                } else {
+                    currentRoles + role
+                }
+
+                val isVip = updatedRoles.contains("vip")
+                client.from("profiles")
+                    .update(buildJsonObject {
+                        put("is_vip", isVip)
+                        put("accountstatus", if (isVip) "VIP" else "Normal")
+                        put("updated_at", java.time.LocalDateTime.now().toString())
+                    }) {
+                        filter {
+                            eq("userid", userId)
+                        }
+                    }
+
+                Log.d(TAG, "更新后角色: $updatedRoles")
             }
 
             Log.d(TAG, "用户角色更新成功")
@@ -1853,11 +2035,11 @@ class SupportRepository {
 
             // 直接从数据库获取统计数据，避免Edge Function错误
 
-            // 获取活跃对话数
+            // 获取活跃对话数（使用"open"状态）
             val activeConversations = client.from("support_conversations")
                 .select(columns = Columns.list("id")) {
                     filter {
-                        eq("status", "active")
+                        eq("status", "open")
                     }
                 }
                 .decodeList<JsonObject>()
@@ -1905,14 +2087,108 @@ class SupportRepository {
                 .decodeList<JsonObject>()
                 .size
 
+            // 获取在线客服数量（有活跃对话的客服）
+            val onlineAgents = try {
+                client.from("support_conversations")
+                    .select(columns = Columns.list("support_id")) {
+                        filter {
+                            eq("status", "open")
+                            // 过滤掉support_id为空的记录
+                        }
+                    }
+                    .decodeList<JsonObject>()
+                    .mapNotNull { it["support_id"]?.jsonPrimitive?.contentOrNull }
+                    .filter { it.isNotBlank() && it != "null" }  // 过滤掉空值和"null"字符串
+                    .distinct()
+                    .size
+            } catch (e: Exception) {
+                Log.w(TAG, "获取在线客服数量失败，使用默认值", e)
+                0
+            }
+
+            // 获取总客服数量（有客服角色的用户）
+            val totalAgents = client.from("user_roles")
+                .select(columns = Columns.list("user_id")) {
+                    filter {
+                        eq("role_type", "support")
+                    }
+                }
+                .decodeList<JsonObject>()
+                .size
+
+            // 计算平均响应时间（基于已关闭对话的处理时间）
+            val avgResponseTime = try {
+                val closedConversations = client.from("support_conversations")
+                    .select(columns = Columns.list("created_at", "closed_at")) {
+                        filter {
+                            eq("status", "closed")
+                            // 过滤掉closed_at为空的记录
+                        }
+                        limit(50) // 取最近50个已关闭对话
+                    }
+                    .decodeList<JsonObject>()
+
+                if (closedConversations.isNotEmpty()) {
+                    val totalHours = closedConversations.mapNotNull { conversation ->
+                        val createdAt = conversation["created_at"]?.jsonPrimitive?.contentOrNull
+                        val closedAt = conversation["closed_at"]?.jsonPrimitive?.contentOrNull
+                        if (createdAt != null && closedAt != null && closedAt != "null") {
+                            try {
+                                val created = java.time.LocalDateTime.parse(createdAt.substring(0, 19))
+                                val closed = java.time.LocalDateTime.parse(closedAt.substring(0, 19))
+                                java.time.Duration.between(created, closed).toHours()
+                            } catch (e: Exception) {
+                                null
+                            }
+                        } else null
+                    }.average()
+                    "${totalHours.toInt()}小时"
+                } else {
+                    "暂无数据"
+                }
+            } catch (e: Exception) {
+                "计算失败"
+            }
+
+            // 计算客户满意度（基于已解决反馈的评分）
+            val customerSatisfaction = try {
+                val resolvedFeedbacks = client.from("user_feedback")
+                    .select(columns = Columns.list("rating")) {
+                        filter {
+                            eq("status", "resolved")
+                            // 过滤掉rating为空的记录
+                        }
+                        limit(100) // 取最近100个已解决反馈
+                    }
+                    .decodeList<JsonObject>()
+
+                if (resolvedFeedbacks.isNotEmpty()) {
+                    val ratings = resolvedFeedbacks.mapNotNull { feedback ->
+                        val ratingStr = feedback["rating"]?.jsonPrimitive?.contentOrNull
+                        if (ratingStr != null && ratingStr != "null") {
+                            ratingStr.toDoubleOrNull()
+                        } else null
+                    }
+                    if (ratings.isNotEmpty()) {
+                        ratings.average()
+                    } else {
+                        0.0
+                    }
+                } else {
+                    0.0
+                }
+            } catch (e: Exception) {
+                0.0
+            }
+
             val stats = mapOf(
                 "active_conversations" to activeConversations,
                 "pending_conversations" to pendingConversations,
                 "resolved_today" to resolvedToday,
-                "avg_response_time" to "2小时", // 模拟数据
-                "customer_satisfaction" to 4.5,
-                "online_agents" to 3, // 模拟数据
-                "total_agents" to 5, // 模拟数据
+                "avg_response_time" to avgResponseTime,
+                "customer_satisfaction" to customerSatisfaction,
+                "online_agents" to onlineAgents,
+                "total_agents" to totalAgents,
                 "recent_feedbacks" to recentFeedbacks,
                 "urgent_issues" to urgentIssues
             )
@@ -2175,7 +2451,7 @@ class SupportRepository {
             // 统计各种状态的对话数量
             val totalConversations = allConversations.size
             val pendingConversations = allConversations.count { it.status == "pending" }
-            val activeConversations = allConversations.count { it.status == "active" }
+            val activeConversations = allConversations.count { it.status == "open" }  // 修正：使用"open"状态
             val closedConversations = allConversations.count { it.status == "closed" }
             val newConversations = allConversations.count { it.supportId == null && it.status == "pending" }
 

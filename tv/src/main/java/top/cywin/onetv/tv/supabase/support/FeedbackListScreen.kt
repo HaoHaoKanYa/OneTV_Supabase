@@ -244,11 +244,18 @@ private fun FeedbackListItem(
 @Composable
 private fun FeedbackTypeChip(type: String) {
     val (color, text) = when (type) {
+        // 中文类型
         "问题报告" -> Color(0xFFFF5722) to "问题"
         "功能建议" -> Color(0xFF2196F3) to "建议"
         "投诉建议" -> Color(0xFFFF9800) to "投诉"
         "改进建议" -> Color(0xFF9C27B0) to "改进"
         "一般反馈" -> Color(0xFF607D8B) to "反馈"
+        // 英文类型映射到中文
+        "bug" -> Color(0xFFFF5722) to "问题"
+        "feature" -> Color(0xFF2196F3) to "建议"
+        "complaint" -> Color(0xFFFF9800) to "投诉"
+        "improvement" -> Color(0xFF9C27B0) to "改进"
+        "general" -> Color(0xFF607D8B) to "反馈"
         else -> Color.Gray to type
     }
     
@@ -271,14 +278,14 @@ private fun FeedbackTypeChip(type: String) {
 @Composable
 private fun FeedbackStatusChip(status: String) {
     val (color, text) = when (status) {
-        "pending" -> Color(0xFFFF9800) to "待处理"
-        "processing" -> Color(0xFF2196F3) to "处理中"
+        "submitted" -> Color(0xFFFF9800) to "已提交"
+        "reviewing" -> Color(0xFF2196F3) to "处理中"
         "resolved" -> Color(0xFF4CAF50) to "已解决"
         "closed" -> Color(0xFF607D8B) to "已关闭"
         "withdrawn" -> Color(0xFF9E9E9E) to "已撤回"
         else -> Color.Gray to status
     }
-    
+
     Text(
         text = text,
         color = color,

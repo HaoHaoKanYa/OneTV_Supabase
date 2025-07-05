@@ -799,11 +799,12 @@ class SupportViewModel(application: Application) : AndroidViewModel(application)
     fun updateUserRole(userId: String, role: String, callback: (Boolean) -> Unit) {
         viewModelScope.launch {
             try {
-                Log.d(TAG, "更新用户角色: $userId -> $role")
+                Log.d(TAG, "ViewModel: 开始更新用户角色: $userId -> $role")
                 val success = supportRepository.updateUserRole(userId, role)
+                Log.d(TAG, "ViewModel: 用户角色更新结果: $success")
                 callback(success)
             } catch (e: Exception) {
-                Log.e(TAG, "更新用户角色失败", e)
+                Log.e(TAG, "ViewModel: 更新用户角色失败", e)
                 callback(false)
             }
         }
