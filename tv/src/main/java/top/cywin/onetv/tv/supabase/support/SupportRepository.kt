@@ -229,7 +229,8 @@ class SupportRepository {
     suspend fun sendSupportMessage(
         conversationId: String,
         messageText: String,
-        messageType: String = SupportMessage.TYPE_TEXT
+        messageType: String = SupportMessage.TYPE_TEXT,
+        isFromSupport: Boolean = false
     ): Boolean = withContext(Dispatchers.IO) {
         try {
             Log.d(TAG, "=== 开始发送客服消息 ===")
@@ -245,6 +246,7 @@ class SupportRepository {
             }
 
             Log.d(TAG, "发送者ID: ${currentUser.id}")
+            Log.d(TAG, "是否来自客服: $isFromSupport")
 
             // 使用重试机制发送消息
             executeWithRetry("发送客服消息") {
@@ -255,7 +257,7 @@ class SupportRepository {
                         put("sender_id", currentUser.id)
                         put("message_text", messageText)
                         put("message_type", messageType)
-                        put("is_from_support", false) // 用户发送的消息
+                        put("is_from_support", isFromSupport)
                     }
                 )
                 Log.d(TAG, "数据库插入操作完成，结果: $insertResult")
@@ -587,6 +589,54 @@ class SupportRepository {
      */
     fun getCurrentUserId(): String? {
         return client.auth.currentUserOrNull()?.id
+    }
+
+    /**
+     * 获取用户资料
+     */
+    suspend fun getUserProfile(userId: String): UserProfile? = withContext(Dispatchers.IO) {
+        try {
+            Log.d(TAG, "获取用户资料: $userId")
+
+            val userProfile = client.from("profiles")
+                .select(columns = Columns.list(
+                    "userid", "username", "email", "created_at", "updated_at", "accountstatus"
+                )) {
+                    filter {
+                        eq("userid", userId)
+                    }
+                    limit(1)
+                }
+                .decodeSingleOrNull<JsonObject>()
+
+            if (userProfile != null) {
+                // 获取用户角色信息
+                val userRoles = client.from("user_roles")
+                    .select(columns = Columns.list("role_type")) {
+                        filter {
+                            eq("user_id", userId)
+                            eq("is_active", true)
+                        }
+                    }
+                    .decodeList<JsonObject>()
+                    .mapNotNull { it["role_type"]?.jsonPrimitive?.contentOrNull }
+
+                return@withContext UserProfile(
+                    id = userId,
+                    username = userProfile["username"]?.jsonPrimitive?.contentOrNull ?: "",
+                    email = userProfile["email"]?.jsonPrimitive?.contentOrNull ?: "",
+                    isVip = userRoles.contains("vip"),
+                    roles = userRoles,
+                    createdAt = userProfile["created_at"]?.jsonPrimitive?.contentOrNull ?: "",
+                    updatedAt = userProfile["updated_at"]?.jsonPrimitive?.contentOrNull
+                )
+            }
+
+            return@withContext null
+        } catch (e: Exception) {
+            Log.e(TAG, "获取用户资料失败", e)
+            return@withContext null
+        }
     }
 
     /**
@@ -1898,10 +1948,30 @@ class SupportRepository {
                 }
                 .decodeList<JsonObject>()
                 .map { convJson ->
+                    val userId = convJson["user_id"]?.jsonPrimitive?.contentOrNull ?: ""
+
+                    // 获取用户信息
+                    val userInfo = try {
+                        client.from("profiles")
+                            .select(columns = Columns.list("username", "email")) {
+                                filter {
+                                    eq("userid", userId)
+                                }
+                                limit(1)
+                            }
+                            .decodeSingleOrNull<JsonObject>()
+                    } catch (e: Exception) {
+                        Log.w(TAG, "获取用户信息失败: $userId", e)
+                        null
+                    }
+
+                    val userName = userInfo?.get("username")?.jsonPrimitive?.contentOrNull ?: userId.take(8)
+                    val userEmail = userInfo?.get("email")?.jsonPrimitive?.contentOrNull ?: ""
+
                     // 获取最后一条消息
                     val lastMessage = try {
                         client.from("support_messages")
-                            .select(columns = Columns.list("message_content")) {
+                            .select(columns = Columns.list("message_text")) {
                                 filter {
                                     eq("conversation_id", convJson["id"]?.jsonPrimitive?.contentOrNull ?: "")
                                 }
@@ -1909,14 +1979,16 @@ class SupportRepository {
                                 limit(1)
                             }
                             .decodeSingleOrNull<JsonObject>()
-                            ?.get("message_content")?.jsonPrimitive?.contentOrNull ?: "暂无消息"
+                            ?.get("message_text")?.jsonPrimitive?.contentOrNull ?: "暂无消息"
                     } catch (e: Exception) {
                         "暂无消息"
                     }
 
                     SupportConversationDisplay(
                         id = convJson["id"]?.jsonPrimitive?.contentOrNull ?: "",
-                        userId = convJson["user_id"]?.jsonPrimitive?.contentOrNull ?: "",
+                        userId = userId,
+                        userName = userName,
+                        userEmail = userEmail,
                         supportId = convJson["support_id"]?.jsonPrimitive?.contentOrNull,
                         conversationTitle = convJson["conversation_title"]?.jsonPrimitive?.contentOrNull ?: "",
                         status = convJson["status"]?.jsonPrimitive?.contentOrNull ?: "open",
@@ -2120,6 +2192,60 @@ class SupportRepository {
         } catch (e: Exception) {
             Log.e(TAG, "获取对话统计信息失败", e)
             return@withContext emptyMap()
+        }
+    }
+
+    /**
+     * 根据用户ID获取用户信息
+     */
+    suspend fun getUserInfoById(userId: String): UserProfile? = withContext(Dispatchers.IO) {
+        try {
+            Log.d(TAG, "获取用户信息，用户ID: $userId")
+
+            val response = client.from("profiles")
+                .select(columns = Columns.list("userid", "username", "email", "created_at", "updated_at", "accountstatus")) {
+                    filter {
+                        eq("userid", userId)
+                    }
+                }
+                .decodeSingleOrNull<JsonObject>()
+
+            if (response == null) {
+                Log.w(TAG, "未找到用户资料，用户ID: $userId")
+                return@withContext null
+            }
+
+            // 获取用户角色信息
+            val userRoles = try {
+                client.from("user_roles")
+                    .select(columns = Columns.list("role_type")) {
+                        filter {
+                            eq("user_id", userId)
+                            eq("is_active", true)
+                        }
+                    }
+                    .decodeList<JsonObject>()
+                    .mapNotNull { it["role_type"]?.jsonPrimitive?.contentOrNull }
+            } catch (e: Exception) {
+                Log.w(TAG, "获取用户角色失败，使用默认角色", e)
+                listOf("user")
+            }
+
+            val userProfile = UserProfile(
+                id = userId,
+                username = response.jsonObject["username"]?.jsonPrimitive?.contentOrNull,
+                email = response.jsonObject["email"]?.jsonPrimitive?.contentOrNull,
+                isVip = response.jsonObject["accountstatus"]?.jsonPrimitive?.contentOrNull == "VIP",
+                roles = userRoles,
+                createdAt = response.jsonObject["created_at"]?.jsonPrimitive?.contentOrNull ?: "",
+                updatedAt = response.jsonObject["updated_at"]?.jsonPrimitive?.contentOrNull
+            )
+
+            Log.d(TAG, "获取用户信息成功: ${userProfile.username}")
+            userProfile
+        } catch (e: Exception) {
+            Log.e(TAG, "获取用户信息失败，用户ID: $userId", e)
+            null
         }
     }
 }

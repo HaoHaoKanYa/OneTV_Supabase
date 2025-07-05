@@ -396,6 +396,8 @@ data class SubmitFeedbackRequest(
 data class SupportConversationDisplay(
     val id: String,
     val userId: String,
+    val userName: String = "", // 用户名
+    val userEmail: String = "", // 用户邮箱
     val supportId: String? = null,
     val conversationTitle: String = "客服对话",
     val status: String = "open", // open, closed, waiting
@@ -411,6 +413,8 @@ data class SupportConversationDisplay(
     companion object {
         fun fromSupportConversation(
             conversation: SupportConversation,
+            userName: String = "",
+            userEmail: String = "",
             lastMessage: String = "",
             tags: List<String> = emptyList(),
             customerSatisfaction: Double? = null
@@ -418,6 +422,8 @@ data class SupportConversationDisplay(
             return SupportConversationDisplay(
                 id = conversation.id,
                 userId = conversation.userId,
+                userName = userName,
+                userEmail = userEmail,
                 supportId = conversation.supportId,
                 conversationTitle = conversation.conversationTitle,
                 status = conversation.status,

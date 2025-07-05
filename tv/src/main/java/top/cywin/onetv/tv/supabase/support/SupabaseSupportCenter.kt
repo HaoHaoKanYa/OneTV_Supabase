@@ -15,6 +15,8 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.BorderStroke
@@ -26,12 +28,16 @@ import androidx.compose.material3.*
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.ui.text.input.ImeAction
+import kotlinx.coroutines.delay
 import top.cywin.onetv.tv.ui.material.SimplePopup
-import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -108,9 +114,20 @@ fun SupabaseSupportCenter(
     supportViewModel: SupportViewModel
 ) {
     val uiState by supportViewModel.uiState.collectAsState()
+    var currentUserId by remember { mutableStateOf<String?>(null) }
 
     // 检查用户登录状态
     val isLoggedIn = userData != null
+
+    // 获取当前用户ID
+    LaunchedEffect(isLoggedIn) {
+        if (isLoggedIn) {
+            supportViewModel.getCurrentUserId { userId ->
+                currentUserId = userId
+                Log.d(TAG, "SupabaseSupportCenter: 当前用户ID = $userId")
+            }
+        }
+    }
 
     if (isLoading) {
         // 加载状态
@@ -857,11 +874,12 @@ private fun ChatStartContent(
 
         Spacer(modifier = Modifier.width(16.dp))
 
-        // 右侧操作区域 - 垂直排列
+        // 右侧操作区域 - 添加滑动功能适配手机端
         Column(
             modifier = Modifier
                 .width(120.dp)
-                .fillMaxHeight(),
+                .fillMaxHeight()
+                .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             // 统计信息区域 - 固定字段，只加载数据
@@ -1117,9 +1135,9 @@ private fun ConversationHistoryItem(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // 左侧：对话标题
+        // 左侧：对话标题 - 修复显示用户名而不是用户ID
         Text(
-            text = conversation.conversationTitle,
+            text = "与用户${conversation.userId.take(8)}...的对话",
             color = Color.White,
             fontSize = 14.sp,
             fontWeight = FontWeight.Medium,
@@ -1288,11 +1306,12 @@ private fun FeedbackStartContent(
 
         Spacer(modifier = Modifier.width(16.dp))
 
-        // 右侧操作区域 - 垂直排列
+        // 右侧操作区域 - 添加滑动功能适配手机端
         Column(
             modifier = Modifier
                 .width(120.dp)
-                .fillMaxHeight(),
+                .fillMaxHeight()
+                .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             // 统计信息区域 - 固定字段，只加载数据
@@ -1678,11 +1697,12 @@ private fun MyFeedbackContent(
 
         Spacer(modifier = Modifier.width(16.dp))
 
-        // 右侧操作区域 - 垂直排列
+        // 右侧操作区域 - 添加滑动功能适配手机端
         Column(
             modifier = Modifier
                 .width(120.dp)
-                .fillMaxHeight(),
+                .fillMaxHeight()
+                .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             // 统计信息区域 - 固定字段，只加载数据
@@ -2107,11 +2127,12 @@ private fun UserManagementContent(
 
         Spacer(modifier = Modifier.width(16.dp))
 
-        // 右侧操作区域 - 垂直排列
+        // 右侧操作区域 - 添加滑动功能适配手机端
         Column(
             modifier = Modifier
                 .width(120.dp)
-                .fillMaxHeight(),
+                .fillMaxHeight()
+                .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             // 统计信息区域 - 固定字段，只加载数据
@@ -3048,11 +3069,12 @@ private fun FeedbackManagementContent(
 
         Spacer(modifier = Modifier.width(16.dp))
 
-        // 右侧操作区域 - 垂直排列
+        // 右侧操作区域 - 添加滑动功能适配手机端
         Column(
             modifier = Modifier
                 .width(120.dp)
-                .fillMaxHeight(),
+                .fillMaxHeight()
+                .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             // 统计信息区域 - 固定字段，只加载数据
@@ -3318,11 +3340,12 @@ fun SupportDeskContent(
 
         Spacer(modifier = Modifier.width(16.dp))
 
-        // 右侧操作区域 - 垂直居中三个按钮
+        // 右侧操作区域 - 添加滑动功能适配手机端
         Column(
             modifier = Modifier
                 .width(120.dp)
-                .fillMaxHeight(),
+                .fillMaxHeight()
+                .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
@@ -3592,14 +3615,14 @@ private fun ConversationListItem(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = conversation.conversationTitle,
+                        text = "与用户${conversation.userName.ifEmpty { conversation.userId.take(8) + "..." }}的对话",
                         color = Color.White,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = "用户ID: ${conversation.userId.take(8)}...",
+                        text = "邮箱: ${conversation.userEmail.ifEmpty { "未提供" }}",
                         color = Color.Gray,
                         fontSize = 11.sp
                     )
@@ -4341,7 +4364,7 @@ fun AdminReplyDialogContent(
 }
 
 /**
- * 管理员聊天窗口组件 - 与现有聊天窗口设计完全统一
+ * 管理员聊天窗口组件 - 与现有聊天窗口设计完全统一，使用局部状态避免焦点问题
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -4352,10 +4375,22 @@ fun AdminChatDialog(
     onMessageChange: (String) -> Unit,
     onSendMessage: () -> Unit,
     onClose: () -> Unit,
-    onCloseConversation: () -> Unit = {}
+    onCloseConversation: () -> Unit = {},
+    currentUserId: String? = null,
+    customerUserInfo: UserProfile? = null
 ) {
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
+
+    // 使用局部状态管理输入框，避免全局状态更新导致的焦点问题
+    var localMessage by remember { mutableStateOf(currentMessage) }
+
+    // 当外部消息清空时（发送后），同步清空本地状态
+    LaunchedEffect(currentMessage) {
+        if (currentMessage.isEmpty() && localMessage.isNotEmpty()) {
+            localMessage = ""
+        }
+    }
 
     // 当有新消息时自动滚动到底部
     LaunchedEffect(messages.size) {
@@ -4375,7 +4410,8 @@ fun AdminChatDialog(
         AdminChatHeader(
             conversation = conversation,
             onClose = onClose,
-            onCloseConversation = onCloseConversation
+            onCloseConversation = onCloseConversation,
+            customerUserInfo = customerUserInfo
         )
 
         Spacer(modifier = Modifier.height(4.dp))
@@ -4402,7 +4438,7 @@ fun AdminChatDialog(
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = "您正在与用户 ${conversation.userId.take(8)}... 对话",
+                            text = "您正在与用户 ${customerUserInfo?.username ?: conversation.userName.ifEmpty { conversation.userId.take(8) + "..." }} 对话",
                             color = Color.Gray,
                             fontSize = 14.sp
                         )
@@ -4421,7 +4457,7 @@ fun AdminChatDialog(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(messages) { message ->
-                        AdminMessageItem(message = message)
+                        AdminMessageItem(message = message, currentUserId = currentUserId)
                     }
                 }
             }
@@ -4429,11 +4465,20 @@ fun AdminChatDialog(
 
         Spacer(modifier = Modifier.height(4.dp))
 
-        // 管理员输入框
+        // 管理员输入框 - 使用局部状态避免焦点问题
         AdminMessageInputField(
-            message = currentMessage,
-            onMessageChange = onMessageChange,
-            onSendMessage = onSendMessage,
+            message = localMessage,
+            onMessageChange = { newMessage ->
+                localMessage = newMessage
+                // 不需要立即同步到全局状态，只在发送时同步
+            },
+            onSendMessage = {
+                if (localMessage.isNotBlank()) {
+                    // 发送时同步到全局状态并调用发送函数
+                    onMessageChange(localMessage)
+                    onSendMessage()
+                }
+            },
             enabled = true
         )
     }
@@ -4446,7 +4491,8 @@ fun AdminChatDialog(
 private fun AdminChatHeader(
     conversation: SupportConversationDisplay,
     onClose: () -> Unit,
-    onCloseConversation: () -> Unit = {}
+    onCloseConversation: () -> Unit = {},
+    customerUserInfo: UserProfile? = null
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -4459,7 +4505,7 @@ private fun AdminChatHeader(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text(
-                    text = "👨‍💼 管理员客服",
+                    text = "👨‍💼 与用户：${customerUserInfo?.username ?: conversation.userName.ifEmpty { conversation.userId.take(8) + "..." }}对话中",
                     color = Color(0xFFFFD700),
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold
@@ -4482,13 +4528,13 @@ private fun AdminChatHeader(
             Spacer(modifier = Modifier.height(2.dp))
 
             Text(
-                text = "与用户对话：${conversation.conversationTitle}",
+                text = "邮箱：${conversation.userEmail.ifEmpty { "未提供" }}",
                 color = Color.Gray,
                 fontSize = 12.sp
             )
 
             Text(
-                text = "用户ID：${conversation.userId.take(8)}... | 优先级：${
+                text = "对话：${conversation.conversationTitle} | 优先级：${
                     when(conversation.priority) {
                         "urgent" -> "🔴 紧急"
                         "high" -> "🟡 高"
@@ -4542,19 +4588,50 @@ private fun AdminChatHeader(
 }
 
 /**
- * 管理员消息项组件 - 微信式左右对话布局
+ * 管理员消息项组件 - 微信式左右对话布局，修复身份识别闪烁问题
  */
 @Composable
-private fun AdminMessageItem(message: SupportMessage) {
-    // 微信式布局：用户消息在左侧，管理员消息在右侧
-    val isFromSupport = message.isFromSupport
-    val alignment = if (isFromSupport) Alignment.CenterEnd else Alignment.CenterStart
-    val backgroundColor = if (isFromSupport)
-        Color(0xFFFFD700).copy(alpha = 0.9f) else Color(0xFF2C3E50).copy(alpha = 0.8f)
-    val textColor = if (isFromSupport) Color.Black else Color.White
-    val senderText = if (isFromSupport) "管理员" else "用户"
-    val senderIcon = if (isFromSupport) "👨‍💼" else "👤"
-    val senderColor = if (isFromSupport) Color.Black else Color(0xFF4ECDC4)
+private fun AdminMessageItem(message: SupportMessage, currentUserId: String? = null) {
+    // 稳定的身份判断逻辑 - 管理员消息应该在左侧
+    val isFromCurrentUser = remember(message.senderId, currentUserId) {
+        message.senderId == currentUserId
+    }
+
+    val isFromSupport = remember(message.isFromSupport) {
+        message.isFromSupport
+    }
+
+    // 管理员聊天窗口中：管理员消息在左侧，用户消息在右侧
+    val alignment = remember(isFromCurrentUser, isFromSupport) {
+        if (isFromSupport || isFromCurrentUser) Alignment.CenterStart else Alignment.CenterEnd
+    }
+
+    val backgroundColor = remember(isFromSupport, isFromCurrentUser) {
+        if (isFromSupport || isFromCurrentUser)
+            Color(0xFFFFD700).copy(alpha = 0.9f) else Color(0xFF2C3E50).copy(alpha = 0.8f)
+    }
+
+    val textColor = remember(isFromSupport, isFromCurrentUser) {
+        if (isFromSupport || isFromCurrentUser) Color.Black else Color.White
+    }
+
+    // 稳定的发送者文本 - 避免重复计算
+    val senderText = remember(isFromCurrentUser, isFromSupport) {
+        when {
+            isFromSupport || isFromCurrentUser -> "管理员"
+            else -> "用户"
+        }
+    }
+    val senderIcon = remember(isFromSupport, isFromCurrentUser) {
+        when {
+            isFromSupport || isFromCurrentUser -> "👨‍💼"
+            else -> "👤"
+        }
+    }
+
+    val senderColor = remember(isFromSupport, isFromCurrentUser) {
+        if (isFromSupport || isFromCurrentUser) Color.Black else Color(0xFF4ECDC4)
+    }
 
     Box(
         modifier = Modifier.fillMaxWidth(),
@@ -4568,8 +4645,8 @@ private fun AdminMessageItem(message: SupportMessage) {
             shape = RoundedCornerShape(
                 topStart = 16.dp,
                 topEnd = 16.dp,
-                bottomStart = if (isFromSupport) 16.dp else 4.dp,
-                bottomEnd = if (isFromSupport) 4.dp else 16.dp
+                bottomStart = if (isFromSupport || isFromCurrentUser) 4.dp else 16.dp,
+                bottomEnd = if (isFromSupport || isFromCurrentUser) 16.dp else 4.dp
             )
         ) {
             Column(
@@ -4608,7 +4685,7 @@ private fun AdminMessageItem(message: SupportMessage) {
 }
 
 /**
- * 管理员消息输入框 - 修复焦点丢失问题
+ * 管理员消息输入框 - 简化版本，移除焦点争夺问题
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -4618,100 +4695,73 @@ private fun AdminMessageInputField(
     onSendMessage: () -> Unit,
     enabled: Boolean
 ) {
-    val focusRequester = remember { FocusRequester() }
     var showEmojiPicker by remember { mutableStateOf(false) }
 
     Row(
         modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         OutlinedTextField(
             value = message,
             onValueChange = onMessageChange,
-            modifier = Modifier
-                .weight(1f)
-                .focusRequester(focusRequester),
-            placeholder = {
-                Text(
-                    text = if (enabled) "输入回复消息..." else "连接中...",
-                    color = Color.Gray
-                )
-            },
+            modifier = Modifier.weight(1f),
+            placeholder = { Text("输入消息...") },
             enabled = enabled,
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(
+                imeAction = ImeAction.Send
+            ),
+            keyboardActions = KeyboardActions(
+                onSend = {
+                    // 键盘确认键发送 - 直接调用onSendMessage，避免重复发送
+                    onSendMessage()
+                }
+            ),
             colors = OutlinedTextFieldDefaults.colors(
-                focusedTextColor = Color.White,
-                unfocusedTextColor = Color.White,
                 focusedBorderColor = Color(0xFFFFD700),
                 unfocusedBorderColor = Color.Gray,
+                focusedTextColor = Color.White,
+                unfocusedTextColor = Color.White,
                 cursorColor = Color(0xFFFFD700)
-            ),
-            shape = RoundedCornerShape(12.dp),
-            singleLine = true
+            )
         )
-
-        Spacer(modifier = Modifier.width(8.dp))
 
         // 表情按钮
         IconButton(
-            onClick = { showEmojiPicker = true },
-            enabled = enabled,
-            modifier = Modifier.size(48.dp)
+            onClick = { showEmojiPicker = !showEmojiPicker },
+            enabled = enabled
         ) {
             Text(
                 text = "😊",
                 fontSize = 20.sp,
-                color = if (enabled) Color.White else Color.Gray
+                color = if (enabled) Color(0xFFFFD700) else Color.Gray
             )
         }
 
-        Spacer(modifier = Modifier.width(4.dp))
-
-        // 美化的发送按钮 - 参考用户聊天窗口设计
-        Button(
+        // 发送按钮
+        IconButton(
             onClick = {
-                if (message.trim().isNotEmpty()) {
-                    onSendMessage()
-                }
+                // 发送按钮点击 - 直接调用onSendMessage，由上层处理空消息检查
+                onSendMessage()
             },
-            enabled = enabled && message.trim().isNotEmpty(),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = if (enabled && message.trim().isNotEmpty())
-                    Color(0xFFFFD700) else Color.Gray.copy(alpha = 0.5f),
-                disabledContainerColor = Color.Gray.copy(alpha = 0.3f)
-            ),
-            shape = RoundedCornerShape(24.dp),
-            modifier = Modifier
-                .height(48.dp)
-                .padding(horizontal = 4.dp),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+            enabled = enabled && message.isNotBlank()
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Send,
-                    contentDescription = "发送",
-                    tint = Color.Black,
-                    modifier = Modifier.size(16.dp)
-                )
-                Spacer(modifier = Modifier.width(4.dp))
-                Text(
-                    text = "发送",
-                    color = Color.Black,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium
-                )
-            }
+            Icon(
+                imageVector = Icons.Default.Send,
+                contentDescription = "发送",
+                tint = if (enabled && message.isNotBlank()) Color(0xFFFFD700) else Color.Gray
+            )
         }
     }
 
-    // 表情选择器对话框
+    // 表情选择器弹窗
     EmojiPickerDialog(
         visible = showEmojiPicker,
         onDismiss = { showEmojiPicker = false },
         onEmojiSelected = { emoji ->
             onMessageChange(message + emoji)
+            showEmojiPicker = false
         }
     )
 }
@@ -4895,6 +4945,28 @@ fun SupportFullScreenDialogs(
         visibleProvider = { uiState.showAdminChat },
         onDismissRequest = { supportViewModel.hideAdminChat() }
     ) {
+        // 在弹窗内部获取当前用户ID
+        var popupCurrentUserId by remember { mutableStateOf<String?>(null) }
+        var customerUserInfo by remember { mutableStateOf<UserProfile?>(null) }
+
+        LaunchedEffect(Unit) {
+            supportViewModel.getCurrentUserId { userId ->
+                popupCurrentUserId = userId
+            }
+        }
+
+        // 获取客户用户信息
+        LaunchedEffect(uiState.selectedConversation?.userId) {
+            val customerId = uiState.selectedConversation?.userId
+            if (customerId != null) {
+                supportViewModel.getUserInfoById(customerId) { userInfo ->
+                    customerUserInfo = userInfo
+                }
+            } else {
+                customerUserInfo = null
+            }
+        }
+
         Box(
             modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.Center
@@ -4917,7 +4989,9 @@ fun SupportFullScreenDialogs(
                         onMessageChange = { supportViewModel.updateAdminCurrentMessage(it) },
                         onSendMessage = { supportViewModel.sendAdminMessage() },
                         onClose = { supportViewModel.hideAdminChat() },
-                        onCloseConversation = { supportViewModel.closeAdminConversation() }
+                        onCloseConversation = { supportViewModel.closeAdminConversation() },
+                        currentUserId = popupCurrentUserId,
+                        customerUserInfo = customerUserInfo
                     )
                 }
             }
@@ -5018,11 +5092,12 @@ private fun ConversationManagementContent(
                 .background(Color.White.copy(alpha = 0.2f))
         )
 
-        // 右侧：统计信息和操作按钮
+        // 右侧：统计信息和操作按钮 - 添加滑动功能适配手机端
         Column(
             modifier = Modifier
                 .width(200.dp)
-                .fillMaxHeight(),
+                .fillMaxHeight()
+                .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             // 统计信息

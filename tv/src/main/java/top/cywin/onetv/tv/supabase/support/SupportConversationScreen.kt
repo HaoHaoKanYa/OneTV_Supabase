@@ -39,6 +39,7 @@ fun SupportConversationScreen(
     Log.d(TAG, "SupportConversationScreen: 初始化客服对话界面")
     val uiState by viewModel.uiState.collectAsState()
     val currentMessage by viewModel.currentMessage.collectAsState()
+    val currentUserInfo by viewModel.currentUserInfo.collectAsState()
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
 
@@ -58,8 +59,12 @@ fun SupportConversationScreen(
             Log.d(TAG, "SupportConversationScreen: 初始化管理员状态 = false")
         }
     }
+    var currentUserId by remember { mutableStateOf<String?>(null) }
 
-    // 获取用户权限
+    // 获取管理员信息（如果对话中有管理员参与）
+    var adminUserInfo by remember { mutableStateOf<UserProfile?>(null) }
+
+    // 获取用户权限和当前用户ID
     LaunchedEffect(Unit) {
         viewModel.getUserRoles { roles ->
             userRoles = roles
@@ -70,8 +75,26 @@ fun SupportConversationScreen(
         viewModel.checkAdminStatus { adminStatus ->
             isAdmin = adminStatus
         }
+        // 获取当前用户ID
+        viewModel.getCurrentUserId { userId ->
+            currentUserId = userId
+            Log.d(TAG, "SupportConversationScreen: 当前用户ID = $userId")
+        }
     }
-    
+
+    // 当对话信息变化时，获取管理员信息
+    LaunchedEffect(uiState.conversationState.conversation?.supportId) {
+        val supportId = uiState.conversationState.conversation?.supportId
+        if (supportId != null) {
+            viewModel.getUserInfoById(supportId) { userInfo ->
+                adminUserInfo = userInfo
+                Log.d(TAG, "获取管理员信息: ${userInfo?.username}")
+            }
+        } else {
+            adminUserInfo = null
+        }
+    }
+
     // 当有新消息时自动滚动到底部
     LaunchedEffect(uiState.conversationState.messages.size) {
         if (uiState.conversationState.messages.isNotEmpty()) {
@@ -94,6 +117,8 @@ fun SupportConversationScreen(
             error = uiState.conversationState.error,
             userRoles = userRoles,
             isAdmin = isAdmin,
+            currentUserInfo = currentUserInfo,
+            adminUserInfo = adminUserInfo,
             onClose = onClose
         )
 
@@ -141,7 +166,7 @@ fun SupportConversationScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(uiState.conversationState.messages) { message ->
-                        MessageItem(message = message)
+                        MessageItem(message = message, currentUserId = currentUserId)
                     }
                 }
             }
@@ -188,6 +213,8 @@ private fun ConversationHeader(
     error: String?,
     userRoles: List<String>,
     isAdmin: Boolean,
+    currentUserInfo: UserProfile?,
+    adminUserInfo: UserProfile?,
     onClose: () -> Unit
 ) {
     Row(
@@ -200,7 +227,18 @@ private fun ConversationHeader(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = conversation?.conversationTitle ?: "客服对话",
+                    text = when {
+                        // 当前用户是管理员，显示与客服用户的对话
+                        isAdmin -> "与用户：${currentUserInfo?.username ?: "用户"}对话中"
+                        // 当前用户是客服，检查是否有管理员参与对话
+                        conversation?.supportId != null -> {
+                            // 修复：确保显示管理员的username而不是userid
+                            val adminName = adminUserInfo?.username ?: "管理员"
+                            "与超管：${adminName}对话中"
+                        }
+                        // 普通客服对话
+                        else -> "与客服对话中"
+                    },
                     color = Color.White,
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold
@@ -299,20 +337,34 @@ private fun ConversationHeader(
 }
 
 /**
- * 消息项 - 微信式左右对话布局
+ * 消息项 - 微信式左右对话布局，基于发送者ID正确识别身份
  */
 @Composable
 private fun MessageItem(
-    message: SupportMessage
+    message: SupportMessage,
+    currentUserId: String? = null
 ) {
-    // 微信式布局：客服消息在左侧，用户消息在右侧
+    // 正确的身份判断：比较发送者ID和当前用户ID
+    val isFromCurrentUser = message.senderId == currentUserId
     val isFromSupport = message.isFromSupport
-    val alignment = if (isFromSupport) Alignment.CenterStart else Alignment.CenterEnd
-    val backgroundColor = if (isFromSupport)
-        Color(0xFF2C3E50).copy(alpha = 0.8f) else Color(0xFF4CAF50).copy(alpha = 0.8f)
+
+    // 微信式布局：当前用户消息在右侧，其他人消息在左侧
+    val alignment = if (isFromCurrentUser) Alignment.CenterEnd else Alignment.CenterStart
+    val backgroundColor = if (isFromCurrentUser)
+        Color(0xFF4CAF50).copy(alpha = 0.8f) else Color(0xFF2C3E50).copy(alpha = 0.8f)
     val textColor = Color.White
-    val senderText = if (isFromSupport) "客服" else "我"
-    val senderIcon = if (isFromSupport) "👨‍💼" else "👤"
+
+    // 根据实际身份显示发送者信息
+    val senderText = when {
+        isFromCurrentUser -> "我"
+        isFromSupport -> "客服"
+        else -> "用户"
+    }
+    val senderIcon = when {
+        isFromCurrentUser -> "👤"
+        isFromSupport -> "👨‍💼"
+        else -> "👤"
+    }
     val senderColor = if (isFromSupport) Color(0xFF4ECDC4) else Color(0xFFFFD700)
 
     Box(
@@ -329,8 +381,8 @@ private fun MessageItem(
             shape = RoundedCornerShape(
                 topStart = 16.dp,
                 topEnd = 16.dp,
-                bottomStart = if (isFromSupport) 4.dp else 16.dp,
-                bottomEnd = if (isFromSupport) 16.dp else 4.dp
+                bottomStart = if (isFromCurrentUser) 16.dp else 4.dp,
+                bottomEnd = if (isFromCurrentUser) 4.dp else 16.dp
             ),
             border = BorderStroke(1.dp, Color.Gray.copy(alpha = 0.2f))
         ) {

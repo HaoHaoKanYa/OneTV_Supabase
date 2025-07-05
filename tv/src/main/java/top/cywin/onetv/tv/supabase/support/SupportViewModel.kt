@@ -37,7 +37,35 @@ class SupportViewModel(application: Application) : AndroidViewModel(application)
     // 当前活跃的对话ID
     private val _currentConversationId = MutableStateFlow<String?>(null)
     val currentConversationId: StateFlow<String?> = _currentConversationId.asStateFlow()
-    
+
+    // 当前用户信息
+    private val _currentUserInfo = MutableStateFlow<UserProfile?>(null)
+    val currentUserInfo: StateFlow<UserProfile?> = _currentUserInfo.asStateFlow()
+
+    init {
+        Log.d(TAG, "SupportViewModel 初始化")
+        // 初始化时获取当前用户信息
+        loadCurrentUserInfo()
+    }
+
+    /**
+     * 加载当前用户信息
+     */
+    private fun loadCurrentUserInfo() {
+        viewModelScope.launch {
+            try {
+                val currentUser = supportRepository.client.auth.currentUserOrNull()
+                if (currentUser != null) {
+                    val userProfile = supportRepository.getUserProfile(currentUser.id)
+                    _currentUserInfo.value = userProfile
+                    Log.d(TAG, "当前用户信息加载成功: ${userProfile?.username}")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "加载当前用户信息失败", e)
+            }
+        }
+    }
+
     // 移除了Repository状态监听，现在完全由ViewModel管理状态
     
     /**
@@ -96,8 +124,9 @@ class SupportViewModel(application: Application) : AndroidViewModel(application)
                     Log.d(TAG, "开始订阅实时消息...")
                     try {
                         supportRepository.subscribeToConversationMessages(conversation.id) { updatedMessages ->
-                            Log.d(TAG, "收到实时消息更新: ${updatedMessages.size} 条消息")
-                            // 更新UI状态中的消息列表，并设置为已连接
+                            Log.d(TAG, "收到实时消息更新，同时更新客服和管理员消息列表: ${updatedMessages.size} 条消息")
+
+                            // 更新客服对话消息列表
                             _uiState.value = _uiState.value.copy(
                                 conversationState = _uiState.value.conversationState.copy(
                                     messages = updatedMessages,
@@ -106,6 +135,12 @@ class SupportViewModel(application: Application) : AndroidViewModel(application)
                                     error = null
                                 )
                             )
+
+                            // 如果管理员聊天窗口打开且对话ID匹配，同时更新管理员消息列表
+                            if (_uiState.value.showAdminChat && _uiState.value.selectedConversation?.id == conversation.id) {
+                                _uiState.value = _uiState.value.copy(adminChatMessages = updatedMessages)
+                                Log.d(TAG, "同时更新了管理员聊天消息列表")
+                            }
                         }
                         Log.d(TAG, "实时消息订阅成功，连接状态已更新")
                     } catch (e: Exception) {
@@ -228,15 +263,23 @@ class SupportViewModel(application: Application) : AndroidViewModel(application)
                             createdAt = java.time.Instant.now().toString()
                         )
 
-                        // 更新消息列表
-                        val currentMessages = _uiState.value.conversationState.messages
-                        val updatedMessages = currentMessages + newMessage
+                        // 更新客服对话消息列表
+                        val currentCustomerMessages = _uiState.value.conversationState.messages
+                        val updatedCustomerMessages = currentCustomerMessages + newMessage
                         _uiState.value = _uiState.value.copy(
                             conversationState = _uiState.value.conversationState.copy(
-                                messages = updatedMessages
+                                messages = updatedCustomerMessages
                             )
                         )
-                        Log.d(TAG, "消息已立即添加到本地列表，总数: ${updatedMessages.size}")
+                        Log.d(TAG, "客服消息已立即添加到客服消息列表，总数: ${updatedCustomerMessages.size}")
+
+                        // 如果管理员聊天窗口打开且对话ID匹配，同时更新管理员消息列表
+                        if (_uiState.value.showAdminChat && _uiState.value.selectedConversation?.id == conversationId) {
+                            val currentAdminMessages = _uiState.value.adminChatMessages
+                            val updatedAdminMessages = currentAdminMessages + newMessage
+                            _uiState.value = _uiState.value.copy(adminChatMessages = updatedAdminMessages)
+                            Log.d(TAG, "同时更新了管理员聊天消息列表，总数: ${updatedAdminMessages.size}")
+                        }
                     }
 
                     // 清空输入框
@@ -1291,9 +1334,22 @@ class SupportViewModel(application: Application) : AndroidViewModel(application)
                 val messages = supportRepository.getConversationMessages(conversationId)
                 _uiState.value = _uiState.value.copy(adminChatMessages = messages)
 
-                // 订阅实时消息更新
+                // 订阅实时消息更新 - 同时更新管理员和客服消息列表
                 supportRepository.subscribeToConversationMessages(conversationId) { updatedMessages ->
+                    Log.d(TAG, "收到实时消息更新，同时更新管理员和客服消息列表: ${updatedMessages.size} 条消息")
+
+                    // 更新管理员聊天消息列表
                     _uiState.value = _uiState.value.copy(adminChatMessages = updatedMessages)
+
+                    // 如果当前对话ID匹配，同时更新客服对话消息列表
+                    if (_currentConversationId.value == conversationId) {
+                        _uiState.value = _uiState.value.copy(
+                            conversationState = _uiState.value.conversationState.copy(
+                                messages = updatedMessages
+                            )
+                        )
+                        Log.d(TAG, "同时更新了客服对话消息列表")
+                    }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "加载管理员聊天消息失败", e)
@@ -1302,26 +1358,102 @@ class SupportViewModel(application: Application) : AndroidViewModel(application)
     }
 
     /**
-     * 管理员发送消息
+     * 管理员发送消息 - 修复闪烁和双向同步问题
      */
     fun sendAdminMessage() {
         val conversationId = _uiState.value.selectedConversation?.id
         val message = _uiState.value.adminCurrentMessage.trim()
 
+        Log.d("MessageSync", "=== 管理员发送消息开始 ===")
+        Log.d("MessageSync", "消息内容: '$message'")
+        Log.d("MessageSync", "对话ID: $conversationId")
+        Log.d("MessageSync", "当前管理员消息数: ${_uiState.value.adminChatMessages.size}")
+        Log.d("MessageSync", "当前客服消息数: ${_uiState.value.conversationState.messages.size}")
+
         if (conversationId != null && message.isNotEmpty()) {
             viewModelScope.launch {
                 try {
-                    Log.d(TAG, "管理员发送消息: $message")
-                    val success = supportRepository.sendSupportMessage(conversationId, message, "text")
-                    if (success) {
-                        // 清空输入框
-                        _uiState.value = _uiState.value.copy(adminCurrentMessage = "")
-                        Log.d(TAG, "管理员消息发送成功")
+                    val currentUser = supportRepository.client.auth.currentUserOrNull()
+                    if (currentUser == null) {
+                        Log.e("MessageSync", "用户未登录，无法发送消息")
+                        return@launch
+                    }
+
+                    // 创建临时消息对象，用于立即显示
+                    val tempMessage = SupportMessage(
+                        id = "temp_${System.currentTimeMillis()}",
+                        conversationId = conversationId,
+                        senderId = currentUser.id,
+                        messageText = message,
+                        messageType = "text",
+                        isFromSupport = true,
+                        readAt = null,
+                        createdAt = java.time.Instant.now().toString()
+                    )
+
+                    Log.d("MessageSync", "=== 立即更新本地消息列表 ===")
+                    Log.d("MessageSync", "临时消息ID: ${tempMessage.id}")
+                    Log.d("MessageSync", "发送者ID: ${tempMessage.senderId}")
+
+                    // 立即更新管理员消息列表
+                    val currentAdminMessages = _uiState.value.adminChatMessages.toMutableList()
+                    currentAdminMessages.add(tempMessage)
+
+                    // 立即更新客服消息列表（如果对话匹配）
+                    val updatedConversationState = if (_currentConversationId.value == conversationId) {
+                        val currentCustomerMessages = _uiState.value.conversationState.messages.toMutableList()
+                        currentCustomerMessages.add(tempMessage)
+                        _uiState.value.conversationState.copy(messages = currentCustomerMessages)
                     } else {
-                        Log.e(TAG, "管理员消息发送失败")
+                        _uiState.value.conversationState
+                    }
+
+                    // 一次性更新状态，避免多次重组导致闪烁
+                    _uiState.value = _uiState.value.copy(
+                        adminChatMessages = currentAdminMessages,
+                        conversationState = updatedConversationState,
+                        adminCurrentMessage = "" // 立即清空输入框
+                    )
+
+                    Log.d("MessageSync", "本地消息列表已更新")
+                    Log.d("MessageSync", "管理员消息数: ${currentAdminMessages.size}")
+                    Log.d("MessageSync", "客服消息数: ${updatedConversationState.messages.size}")
+
+                    // 发送到服务器
+                    Log.d("MessageSync", "=== 开始发送到服务器 ===")
+                    val success = supportRepository.sendSupportMessage(conversationId, message, "text", isFromSupport = true)
+
+                    if (success) {
+                        Log.d("MessageSync", "=== 消息发送成功 ===")
+                        // 发送成功，实时订阅会自动更新消息列表，替换临时消息
+                    } else {
+                        Log.e("MessageSync", "=== 消息发送失败，回滚本地更改 ===")
+                        // 发送失败，移除临时消息
+                        val rollbackAdminMessages = _uiState.value.adminChatMessages.filter { it.id != tempMessage.id }
+                        val rollbackConversationState = if (_currentConversationId.value == conversationId) {
+                            val rollbackCustomerMessages = _uiState.value.conversationState.messages.filter { it.id != tempMessage.id }
+                            _uiState.value.conversationState.copy(messages = rollbackCustomerMessages)
+                        } else {
+                            _uiState.value.conversationState
+                        }
+
+                        _uiState.value = _uiState.value.copy(
+                            adminChatMessages = rollbackAdminMessages,
+                            conversationState = rollbackConversationState,
+                            adminCurrentMessage = message // 恢复输入框内容
+                        )
                     }
                 } catch (e: Exception) {
-                    Log.e(TAG, "管理员发送消息异常", e)
+                    Log.e("MessageSync", "=== 发送消息异常 ===", e)
+                    // 异常时也需要回滚
+                    val currentMessages = _uiState.value.adminChatMessages
+                    if (currentMessages.isNotEmpty() && currentMessages.last().id.startsWith("temp_")) {
+                        val rollbackMessages = currentMessages.dropLast(1)
+                        _uiState.value = _uiState.value.copy(
+                            adminChatMessages = rollbackMessages,
+                            adminCurrentMessage = message // 恢复输入框内容
+                        )
+                    }
                 }
             }
         }
@@ -1442,6 +1574,36 @@ class SupportViewModel(application: Application) : AndroidViewModel(application)
             } catch (e: Exception) {
                 Log.e(TAG, "接管对话失败", e)
                 callback(false)
+            }
+        }
+    }
+
+    /**
+     * 获取当前用户ID
+     */
+    fun getCurrentUserId(callback: (String?) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val currentUser = supportRepository.client.auth.currentUserOrNull()
+                callback(currentUser?.id)
+            } catch (e: Exception) {
+                Log.e(TAG, "获取当前用户ID失败", e)
+                callback(null)
+            }
+        }
+    }
+
+    /**
+     * 根据用户ID获取用户信息
+     */
+    fun getUserInfoById(userId: String, callback: (UserProfile?) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val userInfo = supportRepository.getUserInfoById(userId)
+                callback(userInfo)
+            } catch (e: Exception) {
+                Log.e(TAG, "获取用户信息失败，用户ID: $userId", e)
+                callback(null)
             }
         }
     }
