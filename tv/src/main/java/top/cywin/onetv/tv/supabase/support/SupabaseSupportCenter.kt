@@ -194,6 +194,14 @@ private fun SupportCenterLayout(
                 onMenuItemSelected = { selectedMenuItem = it }
             )
 
+            // 竖线分隔线
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .width(1.dp)
+                    .background(Color.White.copy(alpha = 0.3f))
+            )
+
             // 右侧内容区域
             SupportContentPanel(
                 selectedMenuItem = selectedMenuItem,
@@ -252,19 +260,7 @@ private fun SupportMenuPanel(
                     ),
                     start = Offset(0f, 0f),
                     end = Offset(1000f, 1000f)
-                ),
-                shape = RoundedCornerShape(16.dp)  // 设置所有角为圆角
-            )
-            .border(
-                width = 1.dp,
-                brush = Brush.linearGradient(
-                    colors = listOf(
-                        Color(0xFFD4AF37),
-                        Color(0xFFFFD700),
-                        Color(0xFFD4AF37)
-                    )
-                ),
-                shape = RoundedCornerShape(16.dp)  // 设置所有角为圆角
+                )
             )
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -514,19 +510,7 @@ private fun SupportContentPanel(
                     ),
                     start = Offset(0f, 0f),
                     end = Offset(1000f, 1000f)
-                ),
-                shape = RoundedCornerShape(16.dp)  // 设置右侧区域所有角为圆角
-            )
-            .border(
-                width = 1.dp,
-                brush = Brush.linearGradient(
-                    colors = listOf(
-                        Color(0xFFD4AF37),
-                        Color(0xFFFFD700),
-                        Color(0xFFD4AF37)
-                    )
-                ),
-                shape = RoundedCornerShape(16.dp)  // 设置右侧区域所有角为圆角
+                )
             )
             .padding(8.dp)
     ) {
