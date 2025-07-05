@@ -1,57 +1,77 @@
-name: CI/CD Status
+# 暂时禁用自动更新README.md工作流 - 避免与本地README.md冲突
+# 如需重新启用，请取消注释以下内容
 
+name: CI/CD Status (Disabled)
+
+# 禁用触发条件
 on:
-  workflow_run:
-    workflows: ["Android CI", "Release", "Supabase Deploy", "Check Supabase Config"]
-    types:
-      - completed
-  workflow_dispatch:  # 添加手动触发选项
+  workflow_dispatch:  # 仅保留手动触发，禁用自动触发
+    inputs:
+      enable_readme_update:
+        description: '是否启用README更新 (true/false)'
+        required: false
+        default: 'false'
 
 jobs:
-  update-status:
+  disabled-notice:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-    
-    - name: Update README with build status
+    - name: Disabled Notice
       run: |
-        # 获取最新的工作流状态
-        ANDROID_CI_STATUS=$(curl -s -H "Authorization: token ${{ github.token }}" \
-          "https://api.github.com/repos/${{ github.repository }}/actions/workflows/android.yml/runs?per_page=1" | \
-          jq -r '.workflow_runs[0].conclusion')
-        
-        RELEASE_STATUS=$(curl -s -H "Authorization: token ${{ github.token }}" \
-          "https://api.github.com/repos/${{ github.repository }}/actions/workflows/release.yaml/runs?per_page=1" | \
-          jq -r '.workflow_runs[0].conclusion')
-        
-        SUPABASE_STATUS=$(curl -s -H "Authorization: token ${{ github.token }}" \
-          "https://api.github.com/repos/${{ github.repository }}/actions/workflows/supabase-deploy.yml/runs?per_page=1" | \
-          jq -r '.workflow_runs[0].conclusion')
-        
-        SUPABASE_CONFIG_STATUS=$(curl -s -H "Authorization: token ${{ github.token }}" \
-          "https://api.github.com/repos/${{ github.repository }}/actions/workflows/check-supabase-config.yml/runs?per_page=1" | \
-          jq -r '.workflow_runs[0].conclusion')
-        
-        # 更新README.md中的构建状态
-        sed -i '/## 构建状态/,/## /c\
-        ## 构建状态\n\
-        \n\
-        | 工作流 | 状态 |\n\
-        |-------|------|\n\
-        | Android CI | ![Android CI](https://github.com/${{ github.repository }}/actions/workflows/android.yml/badge.svg) |\n\
-        | Release | ![Release](https://github.com/${{ github.repository }}/actions/workflows/release.yaml/badge.svg) |\n\
-        | Supabase Deploy | ![Supabase Deploy](https://github.com/${{ github.repository }}/actions/workflows/supabase-deploy.yml/badge.svg) |\n\
-        | Supabase Config | ![Supabase Config](https://github.com/${{ github.repository }}/actions/workflows/check-supabase-config.yml/badge.svg) |\n\
-        \n\
-        ' README.md
-        
-        # 如果有变更，提交更改
-        git config --local user.email "github-actions[bot]@users.noreply.github.com"
-        git config --local user.name "github-actions[bot]"
-        git add README.md
-        git commit -m "Update build status badges [skip ci]" || echo "No changes to commit"
-        git push 
+        echo "此工作流已被暂时禁用以避免README.md冲突"
+        echo "如需重新启用，请编辑 .github/workflows/ci-cd-status.yml 文件"
+
+# 以下是原始的自动更新README.md代码（已注释）
+#
+# on:
+#   workflow_run:
+#     workflows: ["Android CI", "Release", "Supabase Deploy", "Check Supabase Config"]
+#     types:
+#       - completed
+#   workflow_dispatch:
+#
+# jobs:
+#   update-status:
+#     runs-on: ubuntu-latest
+#     permissions:
+#       contents: write
+#
+#     steps:
+#     - name: Checkout code
+#       uses: actions/checkout@v4
+#
+#     - name: Update README with build status
+#       run: |
+#         ANDROID_CI_STATUS=$(curl -s -H "Authorization: token ${{ github.token }}" \
+#           "https://api.github.com/repos/${{ github.repository }}/actions/workflows/android.yml/runs?per_page=1" | \
+#           jq -r '.workflow_runs[0].conclusion')
+#
+#         RELEASE_STATUS=$(curl -s -H "Authorization: token ${{ github.token }}" \
+#           "https://api.github.com/repos/${{ github.repository }}/actions/workflows/release.yaml/runs?per_page=1" | \
+#           jq -r '.workflow_runs[0].conclusion')
+#
+#         SUPABASE_STATUS=$(curl -s -H "Authorization: token ${{ github.token }}" \
+#           "https://api.github.com/repos/${{ github.repository }}/actions/workflows/supabase-deploy.yml/runs?per_page=1" | \
+#           jq -r '.workflow_runs[0].conclusion')
+#
+#         SUPABASE_CONFIG_STATUS=$(curl -s -H "Authorization: token ${{ github.token }}" \
+#           "https://api.github.com/repos/${{ github.repository }}/actions/workflows/check-supabase-config.yml/runs?per_page=1" | \
+#           jq -r '.workflow_runs[0].conclusion')
+#
+#         sed -i '/## 构建状态/,/## /c\
+#         ## 构建状态\n\
+#         \n\
+#         | 工作流 | 状态 |\n\
+#         |-------|------|\n\
+#         | Android CI | ![Android CI](https://github.com/${{ github.repository }}/actions/workflows/android.yml/badge.svg) |\n\
+#         | Release | ![Release](https://github.com/${{ github.repository }}/actions/workflows/release.yaml/badge.svg) |\n\
+#         | Supabase Deploy | ![Supabase Deploy](https://github.com/${{ github.repository }}/actions/workflows/supabase-deploy.yml/badge.svg) |\n\
+#         | Supabase Config | ![Supabase Config](https://github.com/${{ github.repository }}/actions/workflows/check-supabase-config.yml/badge.svg) |\n\
+#         \n\
+#         ' README.md
+#
+#         git config --local user.email "github-actions[bot]@users.noreply.github.com"
+#         git config --local user.name "github-actions[bot]"
+#         git add README.md
+#         git commit -m "Update build status badges [skip ci]" || echo "No changes to commit"
+#         git push
