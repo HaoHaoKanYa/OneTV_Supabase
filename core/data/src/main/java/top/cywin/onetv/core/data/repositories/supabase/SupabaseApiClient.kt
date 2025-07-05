@@ -28,16 +28,31 @@ import kotlinx.serialization.json.intOrNull
 /**
  * Supabase API客户端
  * 用于调用Supabase Edge Functions，替代原Cloudflare API调用
+ * 使用单例模式确保sessionToken在整个应用生命周期中保持一致
  */
-class SupabaseApiClient {
+class SupabaseApiClient private constructor() {
     private val client = SupabaseClient.client
     private val functions = client.functions
     private val storage = client.storage
     private val auth = client.auth
     private val log = Logger.create("SupabaseApiClient")
-    
+
     // 添加会话令牌字段
     private var sessionToken: String? = null
+
+    companion object {
+        @Volatile
+        private var INSTANCE: SupabaseApiClient? = null
+
+        /**
+         * 获取SupabaseApiClient单例实例
+         */
+        fun getInstance(): SupabaseApiClient {
+            return INSTANCE ?: synchronized(this) {
+                INSTANCE ?: SupabaseApiClient().also { INSTANCE = it }
+            }
+        }
+    }
     
     /**
      * 设置会话令牌
@@ -57,6 +72,26 @@ class SupabaseApiClient {
             // 即使失败也继续，因为我们仍然可以手动使用token
         }
     }
+
+    /**
+     * 检查是否已设置会话令牌
+     * @return 如果已设置返回true，否则返回false
+     */
+    fun hasSessionToken(): Boolean {
+        return !sessionToken.isNullOrEmpty()
+    }
+
+    /**
+     * 获取会话令牌状态信息（用于调试）
+     * @return 会话令牌状态描述
+     */
+    fun getSessionTokenStatus(): String {
+        return if (sessionToken != null) {
+            "已设置 (${sessionToken!!.take(10)}...)"
+        } else {
+            "未设置"
+        }
+    }
     
     /**
      * 获取IPTV频道列表
@@ -67,30 +102,43 @@ class SupabaseApiClient {
         try {
             log.d("调用Supabase函数获取IPTV频道: ispType=$ispType")
             log.d("使用的Supabase URL: ${SupabaseClient.getUrl()}")
-            
+
+            // 检查并记录sessionToken状态
+            if (sessionToken != null) {
+                log.d("使用sessionToken调用IPTV频道API: ${sessionToken!!.take(10)}...")
+            } else {
+                log.w("⚠️ sessionToken为空，将以游客身份调用IPTV频道API")
+            }
+
             val response = functions.invoke(
                 function = "iptv-channels?ispType=$ispType",
                 headers = io.ktor.http.Headers.build {
                     append("Method", "GET")
+                    // ✅ 添加Authorization头传递用户token
+                    sessionToken?.let { token ->
+                        append("Authorization", "Bearer $token")
+                        log.d("已添加Authorization头到IPTV频道请求")
+                    }
                 }
             )
             log.d("成功获取IPTV频道列表，响应大小: ${response.toString().length} 字节")
             return@withContext response.bodyAsText()
         } catch (e: Exception) {
             log.e("获取IPTV频道列表失败", e)
-            
+
             // 添加更详细的错误日志
             val errorDetails = when (e) {
                 is io.github.jan.supabase.exceptions.HttpRequestException -> {
                     "HTTP错误: ${e.message}\n" +
                     "请求URL: ${e.message?.substringAfter("to ")?.substringBefore(" (") ?: "未知"}\n" +
                     "Supabase客户端URL: ${SupabaseClient.getUrl()}\n" +
+                    "SessionToken状态: ${if (sessionToken != null) "已设置" else "未设置"}\n" +
                     "请确认Supabase客户端已正确初始化，环境变量已正确设置"
                 }
                 else -> "错误类型: ${e.javaClass.simpleName}, 消息: ${e.message}"
             }
             log.e("错误详情 - $errorDetails")
-            
+
             throw e
         }
     }

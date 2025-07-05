@@ -362,7 +362,7 @@ object SupabaseWatchHistorySyncService {
         userId: String
     ): Int = withContext(Dispatchers.IO) {
         Log.d(TAG, "开始批量upsert同步，记录数: ${pendingItems.size}")
-        val apiClient = SupabaseApiClient()
+        val apiClient = SupabaseApiClient.getInstance()
         
         // 确保使用最新的会话令牌
         val sessionToken = SupabaseSessionManager.getSession(context)
@@ -539,7 +539,7 @@ object SupabaseWatchHistorySyncService {
      */
     private suspend fun getServerWatchHistory(context: Context): List<SupabaseWatchHistoryItem>? = withContext(Dispatchers.IO) {
         try {
-            val apiClient = SupabaseApiClient()
+            val apiClient = SupabaseApiClient.getInstance()
             val sessionToken = SupabaseSessionManager.getSession(context)
             if (sessionToken == null) {
                 Log.e(TAG, "获取服务器观看历史失败: 无有效会话令牌")
@@ -587,7 +587,7 @@ object SupabaseWatchHistorySyncService {
         limit: Int = 100
     ): List<SupabaseWatchHistoryItem> = withContext(Dispatchers.IO) {
         Log.d(TAG, "获取服务器观看历史数据")
-        val apiClient = SupabaseApiClient()
+        val apiClient = SupabaseApiClient.getInstance()
 
         try {
             // 调用watch_history Edge Function

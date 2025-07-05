@@ -690,12 +690,12 @@ object SupabaseCacheManager {
      */
     fun getUserCacheStrategy(userData: SupabaseUserDataIptv?): SupabaseCacheStrategy {
         if (userData == null) return SupabaseCacheStrategy.DEFAULT
-        
+
         // 根据用户类型和VIP有效期返回不同的缓存策略
         if (userData.is_vip) {
             val vipEndDate = parseVipEndDate(userData.vipend)
             val daysRemaining = calculateDaysRemaining(vipEndDate)
-            
+
             return when {
                 daysRemaining > 30 -> SupabaseCacheStrategy.TimeStrategy(30 * 24 * 60 * 60 * 1000L) // 30天
                 daysRemaining > 7 -> SupabaseCacheStrategy.TimeStrategy(2 * 24 * 60 * 60 * 1000L)   // 2天
@@ -703,9 +703,28 @@ object SupabaseCacheManager {
                 else -> SupabaseCacheStrategy.TimeStrategy(4 * 60 * 60 * 1000L)                     // 4小时
             }
         }
-        
+
         // 普通用户不自动刷新
         return SupabaseCacheStrategy.DEFAULT
+    }
+
+    /**
+     * 用户权限变化时刷新相关缓存
+     * 当用户VIP状态或权限发生变化时调用此方法
+     * @param context 上下文
+     */
+    suspend fun refreshUserPermissionCache(context: Context) {
+        try {
+            Log.d(TAG, "🔄 用户权限变化，刷新相关缓存...")
+
+            // 清除用户数据缓存，确保获取最新权限信息
+            clearCache(context, SupabaseCacheKey.USER_DATA)
+            clearCache(context, SupabaseCacheKey.USER_VIP_STATUS)
+
+            Log.d(TAG, "✅ 用户权限相关缓存已刷新")
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ 刷新用户权限缓存失败", e)
+        }
     }
     
     /**

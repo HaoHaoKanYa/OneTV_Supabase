@@ -25,7 +25,7 @@ import java.util.TimeZone
 class SupabaseRepository {
 
     private val client = SupabaseClient.client
-    private val apiClient = SupabaseApiClient() // 添加ApiClient
+    private val apiClient = SupabaseApiClient.getInstance() // 使用单例ApiClient
 
     /**
      * 登录用户

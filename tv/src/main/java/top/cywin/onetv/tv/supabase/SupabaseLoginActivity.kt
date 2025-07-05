@@ -166,7 +166,7 @@ class SupabaseLoginActivity : ComponentActivity() {
                             val userData = repository.getUserData(accessToken)
                             // 新增：应用启动时写入/刷新 user_sessions 表，便于后端统计真实在线用户
                             try {
-                                val apiClient = top.cywin.onetv.core.data.repositories.supabase.SupabaseApiClient()
+                                val apiClient = top.cywin.onetv.core.data.repositories.supabase.SupabaseApiClient.getInstance()
                                 val userId = userData.userid
                                 val now = java.time.ZonedDateTime.now(java.time.ZoneOffset.UTC)
                                 val expiresAt = now.plusMinutes(30).toString()
@@ -512,7 +512,7 @@ class SupabaseLoginActivity : ComponentActivity() {
     private suspend fun executeUserSessionUpdate(userData: top.cywin.onetv.core.data.repositories.supabase.SupabaseUserDataIptv, accessToken: String) = withContext(Dispatchers.IO) {
         try {
             log.i("🌐 更新用户会话...")
-            val apiClient = top.cywin.onetv.core.data.repositories.supabase.SupabaseApiClient()
+            val apiClient = top.cywin.onetv.core.data.repositories.supabase.SupabaseApiClient.getInstance()
             val userId = userData.userid
             val now = java.time.ZonedDateTime.now(java.time.ZoneOffset.UTC)
             val expiresAt = now.plusMinutes(30).toString()
@@ -705,7 +705,7 @@ class SupabaseLoginActivity : ComponentActivity() {
         getSharedPreferences("user", MODE_PRIVATE).edit()
             .putString("session", token)
             .apply()
-        
+
         // 新增：同时保存到SupabaseCacheManager (使用协程作用域)
         lifecycleScope.launch(Dispatchers.IO) {
             try {
@@ -715,6 +715,15 @@ class SupabaseLoginActivity : ComponentActivity() {
                     token
                 )
                 Log.i("SupabaseLoginActivity", "📝 会话令牌已保存到缓存管理器")
+
+                // ✅ 设置SupabaseApiClient的sessionToken
+                try {
+                    val apiClient = top.cywin.onetv.core.data.repositories.supabase.SupabaseApiClient.getInstance()
+                    apiClient.setSessionToken(token)
+                    Log.i("SupabaseLoginActivity", "✅ 登录时已设置SupabaseApiClient sessionToken")
+                } catch (e: Exception) {
+                    Log.e("SupabaseLoginActivity", "❌ 设置SupabaseApiClient sessionToken失败", e)
+                }
             } catch (e: Exception) {
                 Log.e("SupabaseLoginActivity", "❌ 保存会话令牌到缓存管理器失败: ${e.message}", e)
             }
@@ -814,7 +823,7 @@ class SupabaseLoginActivity : ComponentActivity() {
     private fun logoutAndClearSessions(userId: String) {
         lifecycleScope.launch {
             try {
-                val apiClient = top.cywin.onetv.core.data.repositories.supabase.SupabaseApiClient()
+                val apiClient = top.cywin.onetv.core.data.repositories.supabase.SupabaseApiClient.getInstance()
                 val accessToken = repository.getAccessToken()
                 var deleted = false
                 if (accessToken != null) {

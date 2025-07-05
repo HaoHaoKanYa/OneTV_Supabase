@@ -26,7 +26,7 @@ class GuestIptvRepository(
 ), BaseIptvRepository {
 
     private val log = Logger.create(javaClass.simpleName)
-    private val supabaseApi = SupabaseApiClient() // 添加Supabase API客户端
+    private val supabaseApi = SupabaseApiClient.getInstance() // 使用单例Supabase API客户端
 
     // 获取直播源数据
     private suspend fun fetchSource(sourceUrl: String): String {

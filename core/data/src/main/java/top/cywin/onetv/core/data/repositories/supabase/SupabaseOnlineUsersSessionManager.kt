@@ -27,7 +27,7 @@ class SupabaseOnlineUsersSessionManager private constructor(context: Context) {
     private val prefs = context.getSharedPreferences("supabase_online_users_cache", Context.MODE_PRIVATE)
     
     // Supabase API客户端
-    private val apiClient = SupabaseApiClient()
+    private val apiClient = SupabaseApiClient.getInstance()
     
     // 协程作用域和任务
     private val scope = CoroutineScope(Dispatchers.Default)

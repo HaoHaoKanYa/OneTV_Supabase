@@ -25,7 +25,7 @@ class IptvRepository(
     source.isLocal,
 ), BaseIptvRepository {
     private val log = Logger.create(javaClass.simpleName)
-    private val supabaseApi = SupabaseApiClient() // 添加Supabase API客户端
+    private val supabaseApi = SupabaseApiClient.getInstance() // 添加Supabase API客户端
 
     // ------------ 核心逻辑 ------------
     override suspend fun getChannelGroupList(cacheTime: Long): ChannelGroupList {

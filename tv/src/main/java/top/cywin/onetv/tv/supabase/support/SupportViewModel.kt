@@ -838,7 +838,7 @@ class SupportViewModel(application: Application) : AndroidViewModel(application)
                 val currentUser = supportRepository.client.auth.currentUserOrNull()
                 if (currentUser != null) {
                     Log.d(TAG, "重新获取用户资料数据...")
-                    val apiClient = top.cywin.onetv.core.data.repositories.supabase.SupabaseApiClient()
+                    val apiClient = top.cywin.onetv.core.data.repositories.supabase.SupabaseApiClient.getInstance()
                     val userProfile = apiClient.getUserProfile()
                     val username = userProfile["username"]?.jsonPrimitive?.content ?: "未知用户"
                     val email = userProfile["email"]?.jsonPrimitive?.content ?: "未设置"

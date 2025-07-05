@@ -106,7 +106,7 @@ object SupabaseServiceInfoManager {
      * @return 包含内容和时间戳的响应对象
      */
     private suspend fun fetchFromServer(): ServiceInfoResponse {
-        val apiClient = SupabaseApiClient()
+        val apiClient = SupabaseApiClient.getInstance()
         val response = apiClient.getServiceInfo()
         
         val content = response["content"]?.jsonPrimitive?.content ?: "暂无服务信息"

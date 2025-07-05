@@ -147,6 +147,15 @@ class MainActivity : ComponentActivity() {
                             SupabaseCacheManager.preheatUserCache(applicationContext, userData.userid)
                             Log.d(TAG, "用户缓存预热完成")
 
+                            // ✅ 设置SupabaseApiClient的sessionToken
+                            try {
+                                val apiClient = top.cywin.onetv.core.data.repositories.supabase.SupabaseApiClient.getInstance()
+                                apiClient.setSessionToken(session)
+                                Log.d(TAG, "✅ 应用启动时已设置SupabaseApiClient sessionToken")
+                            } catch (e: Exception) {
+                                Log.e(TAG, "❌ 设置SupabaseApiClient sessionToken失败", e)
+                            }
+
                             // 启动用户会话心跳机制
                             startUserSessionHeartbeat(userData)
                         }
@@ -295,7 +304,7 @@ class MainActivity : ComponentActivity() {
         heartbeatJob = lifecycleScope.launch {
             while (true) {
                 try {
-                    val apiClient = SupabaseApiClient()
+                    val apiClient = SupabaseApiClient.getInstance()
                     val userId = userData.userid
                     val now = java.time.ZonedDateTime.now(java.time.ZoneOffset.UTC)
                     val expiresAt = now.plusMinutes(30).toString()

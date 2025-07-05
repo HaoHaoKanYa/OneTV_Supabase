@@ -509,7 +509,7 @@ suspend fun loadWatchHistoryPaged(
     
     Log.d("SupabaseWatchHistory", "开始从API加载观看历史: 时间范围=$timeRangeParam, 排序=$sortByParam:$sortOrderParam, 页码=$page")
     
-    val apiClient = SupabaseApiClient()
+    val apiClient = SupabaseApiClient.getInstance()
     
     try {
         // 1. 获取统计数据
