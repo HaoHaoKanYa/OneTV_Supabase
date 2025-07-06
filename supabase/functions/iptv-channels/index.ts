@@ -18,15 +18,17 @@ serve(async (req) => {
     const ispType = url.searchParams.get('ispType')
     
     // 检查ispType参数
-    if (!ispType || (ispType !== 'yidong' && ispType !== 'dianxin')) {
+    if (!ispType || !['yidong', 'dianxin', 'public'].includes(ispType)) {
       return new Response(
         JSON.stringify({ error: '无效的ispType参数' }),
         { status: 400, headers: corsHeaders }
       )
     }
-    
+
     // 根据ispType确定要获取的文件名
-    const filename = ispType === 'yidong' ? 'wuzhou_cmcc.m3u' : 'wuzhou_telecom.m3u'
+    const filename = ispType === 'yidong' ? 'wuzhou_cmcc.m3u' :
+                    ispType === 'dianxin' ? 'wuzhou_telecom.m3u' :
+                    'onetv_api_result.m3u'
     
     // 创建Supabase客户端
     const supabaseAdmin = createClient(

@@ -95,7 +95,7 @@ class SupabaseApiClient private constructor() {
     
     /**
      * 获取IPTV频道列表
-     * @param ispType 运营商类型：yidong(移动)或dianxin(电信)
+     * @param ispType 运营商类型：yidong(移动)、dianxin(电信)或public(公共)
      * @return 返回M3U格式的频道列表
      */
     suspend fun getIptvChannels(ispType: String): String = withContext(Dispatchers.IO) {
@@ -145,7 +145,7 @@ class SupabaseApiClient private constructor() {
 
     /**
      * 直接从存储获取M3U文件
-     * @param ispType 运营商类型：yidong(移动)或dianxin(电信)
+     * @param ispType 运营商类型：yidong(移动)、dianxin(电信)或public(公共)
      * @return 返回M3U格式的频道列表
      */
     suspend fun getIptvChannelsFromStorage(ispType: String): String = withContext(Dispatchers.IO) {
@@ -153,6 +153,7 @@ class SupabaseApiClient private constructor() {
             val fileName = when (ispType) {
                 "yidong" -> "wuzhou_cmcc.m3u"
                 "dianxin" -> "wuzhou_telecom.m3u"
+                "public" -> "onetv_api_result.m3u"
                 else -> throw IllegalArgumentException("无效的运营商类型")
             }
             

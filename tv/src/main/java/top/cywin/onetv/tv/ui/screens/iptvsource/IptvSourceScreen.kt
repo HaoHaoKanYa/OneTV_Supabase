@@ -68,8 +68,7 @@ fun IptvSourceScreen(
 
     val focusManager = LocalFocusManager.current
 
-    // 获取默认源
-    val defaultSource = Constants.IPTV_SOURCE_LIST.firstOrNull { it.name == "关注公众号【壹来了】" }
+
     Drawer(
         position = DrawerPosition.Bottom,
         onDismissRequest = onClose,
@@ -90,7 +89,7 @@ fun IptvSourceScreen(
             // 渲染 IPTV 源列表
             itemsIndexed(iptvSourceList) { index, source ->
                 // 判断当前源是否为默认源
-                if (source == defaultSource) {
+                if (source.name == "移动-关注公众号【壹来了】") {
                     // 如果是默认源，显示名称和提示文本，并允许选择
                     ListItem(
                         modifier = Modifier.ifElse(
@@ -102,7 +101,7 @@ fun IptvSourceScreen(
                         headlineContent = {
                             Column {
                                 // 显示默认源的名称
-                                Text("移动测试：${source.name}",color = Color(rgb(135, 206, 250)),
+                                Text("移动测试：移动-关注公众号【壹来了】",color = Color(rgb(135, 206, 250)),
                                     fontSize = 20.sp,
                                     fontWeight = FontWeight.Bold)// 设置加粗
                                 // 显示提示文本
@@ -119,7 +118,7 @@ fun IptvSourceScreen(
                         }
                     )
 
-                } else if (source.name == "關注公众号【壹来了】") {
+                } else if (source.name == "电信-關注公众号【壹来了】") {
                     // 第二条默认源，显示为声明文本
                     ListItem(
                         modifier = Modifier.ifElse(
@@ -131,7 +130,35 @@ fun IptvSourceScreen(
                         headlineContent = {
                             Column {
                                 // 显示第二条默认源的名称
-                                Text("电信测试：關注公众号【壹来了】", color = Color(rgb(135, 206, 250)),
+                                Text("电信测试：电信-關注公众号【壹来了】", color = Color(rgb(135, 206, 250)),
+                                    fontSize = 20.sp,
+                                    fontWeight = FontWeight.Bold)// 设置加粗)
+                                // 显示声明文本
+                                Text("声明：壹来电视仅为空壳软件不提供任何直播源，本条线路仅为调试软件用途，" +
+                                        "使用者请在24小时内删除！更多精彩内容请添加自定义直播源。",color = Color(rgb(255, 69, 0)))
+                            }
+                        },
+                        trailingContent = {
+                            // 显示选择的小圆点
+                            RadioButton(
+                                selected = index == currentIptvSourceIdx,
+                                onClick = { onIptvSourceSelected(source) }
+                            )
+                        }
+                    )
+                } else if (source.name == "公共-关注公眾号【壹来了】") {
+                    // 第三条默认源，显示为声明文本
+                    ListItem(
+                        modifier = Modifier.ifElse(
+                            max(0, currentIptvSourceIdx) == index,
+                            Modifier.focusOnLaunchedSaveable(iptvSourceList),
+                        ),
+                        selected = index == currentIptvSourceIdx, // 选中状态
+                        onClick = { onIptvSourceSelected(source) },
+                        headlineContent = {
+                            Column {
+                                // 显示第三条默认源的名称
+                                Text("公共测试：公共-关注公眾号【壹来了】", color = Color(rgb(135, 206, 250)),
                                     fontSize = 20.sp,
                                     fontWeight = FontWeight.Bold)// 设置加粗)
                                 // 显示声明文本

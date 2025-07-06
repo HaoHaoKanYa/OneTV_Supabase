@@ -37,6 +37,7 @@ class GuestIptvRepository(
             val ispType = when (sourceUrl) {
                 "dynamic:yidong" -> "yidong"
                 "dynamic:dianxin" -> "dianxin"
+                "dynamic:public" -> "public"
                 else -> throw IllegalArgumentException("Invalid dynamic URL: $sourceUrl")
             }
             

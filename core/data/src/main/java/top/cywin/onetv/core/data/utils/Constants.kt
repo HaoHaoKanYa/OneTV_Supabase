@@ -34,12 +34,16 @@ object Constants {
     val IPTV_SOURCE_LIST = IptvSourceList(
         sources = listOf(
             IptvSource(
-                name = "关注公众号【壹来了】",
+                name = "移动-关注公众号【壹来了】",
                 url = "dynamic:yidong" // 动态标识
             ),
             IptvSource(
-                name = "關注公众号【壹来了】",
+                name = "电信-關注公众号【壹来了】",
                 url = "dynamic:dianxin"
+            ),
+            IptvSource(
+                name = "公共-关注公眾号【壹来了】",
+                url = "dynamic:public" // 新增公共线路
             )
         )
     )
