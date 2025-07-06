@@ -41,10 +41,14 @@ serve(async (req) => {
       }
       
       // 返回获取的服务信息
+      console.log('服务信息数据:', JSON.stringify(data, null, 2))
+
       const response = {
         content: data.message || '暂无服务信息',
-        last_updated: Math.floor(Date.parse(data.updated_at) / 1000) // 转为Unix时间戳(秒)
+        last_updated: Math.floor(new Date(data.updated_at).getTime() / 1000) // 转为Unix时间戳(秒)
       }
+
+      console.log('返回响应:', JSON.stringify(response, null, 2))
       
       return new Response(JSON.stringify(response), {
         headers: { 'Content-Type': 'application/json' }
