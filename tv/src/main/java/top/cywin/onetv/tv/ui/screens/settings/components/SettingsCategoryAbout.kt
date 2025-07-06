@@ -3,13 +3,19 @@ package top.cywin.onetv.tv.ui.screens.settings.components
 import android.content.Context
 import android.content.pm.PackageInfo
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.Color
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.runtime.Composable
@@ -61,7 +67,7 @@ fun SettingsCategoryAbout(
             SettingsListItem(
                 modifier = Modifier.focusRequester(focusRequester),
                 headlineContent = "联系我们",
-                trailingContent = Constants.APP_REPO,
+                // trailingContent = Constants.APP_REPO, // 暂时注释掉"关注公众号【壹来了】"文本：原来设置-关于-联系我们对应该的文件显示
                 trailingIcon = Icons.AutoMirrored.Default.OpenInNew,
                 onSelected = {
                     popupManager.push(focusRequester, true)
@@ -92,8 +98,38 @@ fun SettingsCategoryAbout(
                         Text("扫码关注公众号")
                         */
 
-                        // 新的联系我们文本信息
-                        Text("联系我们请前往个人中心客服支持菜单")
+                        // 新的联系我们小卡片信息
+                        Box(
+                            modifier = Modifier
+                                .padding(32.dp)
+                                .background(
+                                    color = Color.Black.copy(alpha = 0.3f), // 与设置页面相同的透明度
+                                    shape = RoundedCornerShape(12.dp)
+                                )
+                                .border(
+                                    width = 2.dp,
+                                    color = Color(0xFFFFD700), // 金黄色边框
+                                    shape = RoundedCornerShape(12.dp)
+                                )
+                                .padding(20.dp)
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                Text(
+                                    text = "💬 联系我们",
+                                    style = androidx.tv.material3.MaterialTheme.typography.titleMedium,
+                                    color = Color.White,
+                                    modifier = Modifier.padding(bottom = 6.dp)
+                                )
+                                Text(
+                                    text = "请前往个人中心客服支持菜单",
+                                    style = androidx.tv.material3.MaterialTheme.typography.bodyMedium,
+                                    color = Color.White.copy(alpha = 0.9f)
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -129,7 +165,7 @@ fun SettingsCategoryAbout(
 
             SettingsListItem(
                 modifier = Modifier.focusRequester(focusRequester),
-                headlineContent = "激活码",
+                headlineContent = "账号升级",
                 trailingIcon = Icons.AutoMirrored.Filled.OpenInNew,
                 onSelected = {
                     popupManager.push(focusRequester, true)
@@ -154,12 +190,39 @@ fun SettingsCategoryAbout(
                 )
                 */
 
-                // 新的激活码获取文本信息
+                // 新的激活码获取小卡片信息
                 Box(modifier = modifier.fillMaxSize()) {
-                    Text(
-                        text = "激活码获取请前往个人中心客服支持菜单",
-                        modifier = Modifier.align(Alignment.Center)
-                    )
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .background(
+                                color = Color.Black.copy(alpha = 0.3f), // 与设置页面相同的透明度
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                            .border(
+                                width = 2.dp,
+                                color = Color(0xFFFFD700), // 金黄色边框
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                            .padding(24.dp)
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Text(
+                                text = "🔑 激活码获取",
+                                style = androidx.tv.material3.MaterialTheme.typography.titleMedium,
+                                color = Color.White,
+                                modifier = Modifier.padding(bottom = 8.dp)
+                            )
+                            Text(
+                                text = "请前往个人中心客服支持菜单",
+                                style = androidx.tv.material3.MaterialTheme.typography.bodyMedium,
+                                color = Color.White.copy(alpha = 0.9f)
+                            )
+                        }
+                    }
                 }
             }
         }
