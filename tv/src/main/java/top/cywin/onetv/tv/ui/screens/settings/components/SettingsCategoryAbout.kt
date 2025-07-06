@@ -60,7 +60,7 @@ fun SettingsCategoryAbout(
 
             SettingsListItem(
                 modifier = Modifier.focusRequester(focusRequester),
-                headlineContent = "公众号",
+                headlineContent = "联系我们",
                 trailingContent = Constants.APP_REPO,
                 trailingIcon = Icons.AutoMirrored.Default.OpenInNew,
                 onSelected = {
@@ -78,6 +78,8 @@ fun SettingsCategoryAbout(
                         modifier = Modifier.align(Alignment.Center),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
+                        // 暂时注释掉原来的公众号二维码和文本
+                        /*
                         Image(
                             painter = painterResource(R.drawable.gongzhonghao_qr_image),
                             contentDescription = "公众号二维码",
@@ -88,6 +90,10 @@ fun SettingsCategoryAbout(
                         )
 
                         Text("扫码关注公众号")
+                        */
+
+                        // 新的联系我们文本信息
+                        Text("联系我们请前往个人中心客服支持菜单")
                     }
                 }
             }
@@ -123,7 +129,7 @@ fun SettingsCategoryAbout(
 
             SettingsListItem(
                 modifier = Modifier.focusRequester(focusRequester),
-                headlineContent = "赞赏",
+                headlineContent = "激活码",
                 trailingIcon = Icons.AutoMirrored.Filled.OpenInNew,
                 onSelected = {
                     popupManager.push(focusRequester, true)
@@ -135,6 +141,8 @@ fun SettingsCategoryAbout(
                 visibleProvider = { visible },
                 onDismissRequest = { visible = false },
             ) {
+                // 暂时注释掉原来的赞赏二维码图片
+                /*
                 val painter = painterResource(R.drawable.mm_reward_qrcode)
 
                 Image(
@@ -144,6 +152,15 @@ fun SettingsCategoryAbout(
                         .align(Alignment.Center)
                         .size(300.dp),
                 )
+                */
+
+                // 新的激活码获取文本信息
+                Box(modifier = modifier.fillMaxSize()) {
+                    Text(
+                        text = "激活码获取请前往个人中心客服支持菜单",
+                        modifier = Modifier.align(Alignment.Center)
+                    )
+                }
             }
         }
     }

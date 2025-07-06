@@ -74,7 +74,9 @@ fun ChannelTempScreen(
             showChannelLogoProvider = showChannelLogoProvider,
         )
 
+        // 暂时注释掉二维码显示功能
         // 加载二维码图片并显示
+        /*
         Image(
             painter = painterResource(id = R.drawable.gongzhonghao_qr_image),
             contentDescription = "公众号二维码",
@@ -87,6 +89,7 @@ fun ChannelTempScreen(
                 .size(80.dp) // 设置图片大小
                 .clip(RoundedCornerShape(8.dp)) // 设置裁剪方式，这里是圆角裁剪
         )
+        */
     }
 }
 
