@@ -22,9 +22,9 @@ import kotlinx.serialization.Serializable
  * 管理1对1客服对话和用户反馈功能
  */
 class SupportViewModel(application: Application) : AndroidViewModel(application) {
-    
+
     private val TAG = "SupportViewModel"
-    private val supportRepository = SupportRepository()
+    private val supportRepository = SupportRepository(application.applicationContext)
     
     // UI状态管理
     private val _uiState = MutableStateFlow(SupportUiState())
@@ -46,6 +46,21 @@ class SupportViewModel(application: Application) : AndroidViewModel(application)
         Log.d(TAG, "SupportViewModel 初始化")
         // 初始化时获取当前用户信息
         loadCurrentUserInfo()
+    }
+
+    /**
+     * 获取应用版本号
+     */
+    private fun getAppVersion(): String {
+        return try {
+            val packageInfo = getApplication<Application>().packageManager.getPackageInfo(
+                getApplication<Application>().packageName, 0
+            )
+            packageInfo.versionName ?: "未知版本"
+        } catch (e: Exception) {
+            Log.e(TAG, "获取应用版本失败", e)
+            "未知版本"
+        }
     }
 
     /**
@@ -354,7 +369,7 @@ class SupportViewModel(application: Application) : AndroidViewModel(application)
                     title = title,
                     description = description,
                     priority = priority,
-                    appVersion = "2.0.0" // 可以从BuildConfig获取
+                    appVersion = getAppVersion() // 动态获取应用版本
                 )
                 
                 if (success) {
@@ -1036,7 +1051,7 @@ class SupportViewModel(application: Application) : AndroidViewModel(application)
                     userId = "system",
                     details = mapOf(
                         "startup_time" to "15s",
-                        "version" to "2.0.0"
+                        "version" to getAppVersion()
                     )
                 )
             )

@@ -1,6 +1,7 @@
 @file:OptIn(io.github.jan.supabase.annotations.SupabaseInternal::class)
 package top.cywin.onetv.tv.supabase.support
 
+import android.content.Context
 import android.util.Log
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.functions.functions
@@ -49,7 +50,7 @@ private const val TAG = "SupportRepository"
  * 客服支持仓库类
  * 处理1对1客服对话和用户反馈功能
  */
-class SupportRepository {
+class SupportRepository(private val context: Context) {
 
     private val TAG = "SupportRepository"
     val client = SupabaseClient.client
@@ -59,6 +60,19 @@ class SupportRepository {
     companion object {
         private const val MAX_RETRY_ATTEMPTS = 3
         private const val RETRY_DELAY_MS = 1000L
+    }
+
+    /**
+     * 获取应用版本号
+     */
+    private fun getAppVersion(): String {
+        return try {
+            val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
+            packageInfo.versionName ?: "未知版本"
+        } catch (e: Exception) {
+            Log.e(TAG, "获取应用版本失败", e)
+            "未知版本"
+        }
     }
 
     // 消息更新回调
@@ -1187,8 +1201,8 @@ class SupportRepository {
                 "未知"
             }
 
-            // 应用版本（固定值）
-            val appVersion = "2.0.0"
+            // 应用版本（动态获取）
+            val appVersion = getAppVersion()
 
             Triple(
                 if (deviceModel.isNotEmpty()) deviceModel else "未知",
